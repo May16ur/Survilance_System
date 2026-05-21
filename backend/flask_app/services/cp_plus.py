@@ -1,0 +1,203 @@
+import base64
+import datetime
+import json
+import os
+
+import cv2
+import numpy as np
+from flask import request
+
+from core.common import CAMERA_NAME_MAP, classify_vehicle_from_anpr, ensure_database, ensure_table, upsert_vehicle_log
+
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ANPR_IMAGE_FOLDER = os.path.join(BASE_DIR, "flask_app", "static", "anpr")
+os.makedirs(ANPR_IMAGE_FOLDER, exist_ok=True)
+
+
+def safe_int(value, default=0):
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def camera_from_event(data):
+    """Resolve CP Plus event to a camera id/name.
+
+    Optional env mapping:
+    CP_PLUS_CAMERA_MAP='{"device-id": 3, "192.168.1.110": 3}'
+    """
+    picture = (data or {}).get("Picture") or {}
+    snap = picture.get("SnapInfo") or {}
+    plate = picture.get("Plate") or {}
+
+    mapping = {}
+    mapping_raw = os.getenv("CP_PLUS_CAMERA_MAP", "").strip()
+    if mapping_raw:
+        try:
+            mapping = json.loads(mapping_raw)
+        except Exception:
+            mapping = {}
+
+    keys = [
+        str(snap.get("DeviceID") or ""),
+        str(request.remote_addr or ""),
+        str(snap.get("LanNo") or ""),
+        str(plate.get("Channel") or ""),
+    ]
+    for key in keys:
+        if key and key in mapping:
+            camera_id = safe_int(mapping[key], 1)
+            return camera_id, CAMERA_NAME_MAP.get(camera_id, f"CP Plus Camera {camera_id}")
+
+    camera_id = safe_int(request.args.get("camera_id") or (data or {}).get("camera_id"), 1)
+    if camera_id not in CAMERA_NAME_MAP:
+        camera_id = 1
+    return camera_id, CAMERA_NAME_MAP.get(camera_id, f"CP Plus Camera {camera_id}")
+
+
+def _jpeg_start_positions(image_bytes):
+    positions = []
+    start = 0
+    while True:
+        pos = image_bytes.find(b"\xff\xd8", start)
+        if pos < 0:
+            break
+        positions.append(pos)
+        start = pos + 2
+    return positions
+
+
+def decode_event_images(data, timestamp):
+    """Decode vehicle/plate images from CP Plus base64 content.
+
+    CP Plus may concatenate two JPEGs in VehiclePic.Content:
+    first = vehicle image, second = clean plate crop.
+    """
+    content = (((data or {}).get("Picture") or {}).get("VehiclePic") or {}).get("Content", "")
+    if not content:
+        return "", "", None
+
+    if "," in content[:80]:
+        content = content.split(",", 1)[1]
+
+    try:
+        image_bytes = base64.b64decode(content, validate=False)
+    except Exception:
+        return "", "", None
+
+    date_folder = datetime.datetime.now().strftime("%Y%m%d")
+    image_dir = os.path.join(ANPR_IMAGE_FOLDER, date_folder)
+    os.makedirs(image_dir, exist_ok=True)
+
+    starts = _jpeg_start_positions(image_bytes)
+    vehicle_bytes = image_bytes[starts[0]:] if starts else image_bytes
+
+    vehicle_filename = f"{timestamp}_vehicle.jpg"
+    with open(os.path.join(image_dir, vehicle_filename), "wb") as image_file:
+        image_file.write(vehicle_bytes)
+    vehicle_rel = f"/static/anpr/{date_folder}/{vehicle_filename}"
+
+    if len(starts) > 1:
+        plate_filename = f"{timestamp}_plate.jpg"
+        with open(os.path.join(image_dir, plate_filename), "wb") as plate_file:
+            plate_file.write(image_bytes[starts[1]:])
+        return vehicle_rel, f"/static/anpr/{date_folder}/{plate_filename}", image_bytes
+
+    return vehicle_rel, _crop_plate_from_box(data, image_bytes, image_dir, date_folder, timestamp), image_bytes
+
+
+def _crop_plate_from_box(data, image_bytes, image_dir, date_folder, timestamp):
+    """Fallback only: crop using the camera bounding box if no embedded plate JPEG exists."""
+    try:
+        frame = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+        plate_box = (((data or {}).get("Picture") or {}).get("Plate") or {}).get("BoundingBox") or []
+        if frame is None or len(plate_box) != 4:
+            return ""
+
+        x1, y1, x2, y2 = [safe_int(v) for v in plate_box]
+        h, w = frame.shape[:2]
+        x1, x2 = max(0, min(x1, w - 1)), max(0, min(x2, w))
+        y1, y2 = max(0, min(y1, h - 1)), max(0, min(y2, h))
+        if x2 <= x1 or y2 <= y1:
+            return ""
+
+        plate_filename = f"{timestamp}_plate.jpg"
+        if cv2.imwrite(os.path.join(image_dir, plate_filename), frame[y1:y2, x1:x2]):
+            return f"/static/anpr/{date_folder}/{plate_filename}"
+    except Exception as e:
+        print("[CP PLUS] Plate crop skipped:", e)
+    return ""
+
+
+def normalize_event(data, event_file=None):
+    """Convert a raw CP Plus payload to the row shape used by DB and React."""
+    picture = (data or {}).get("Picture") or {}
+    plate = picture.get("Plate") or {}
+    vehicle = picture.get("Vehicle") or {}
+    snap = picture.get("SnapInfo") or {}
+    camera_id, camera_name = camera_from_event(data or {})
+
+    plate_number = str(plate.get("PlateNumber") or "").strip().upper()
+    snap_time = snap.get("SnapTime") or snap.get("AccurateTime") or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    class_id, class_name, class_reason = classify_vehicle_from_anpr(
+        plate_number,
+        plate_color=plate.get("PlateColor") or "",
+        plate_type=plate.get("PlateType") or "",
+        vehicle_type=vehicle.get("VehicleType") or "",
+    )
+
+    return {
+        "event_file": event_file or "",
+        "source_type": "cp_plus_anpr",
+        "camera_id": camera_id,
+        "camera_name": camera_name,
+        "track_id": safe_int(plate.get("UploadNum") or snap.get("LanNo") or int(datetime.datetime.now().timestamp())),
+        "license": plate_number or "UNKNOWN",
+        "plate_number": plate_number,
+        "plate_confidence": plate.get("Confidence"),
+        "plate_color": plate.get("PlateColor") or "",
+        "plate_type": plate.get("PlateType") or "",
+        "vehicle_type": vehicle.get("VehicleType") or "",
+        "vehicle_color": vehicle.get("VehicleColor") or "",
+        "speed": f"{vehicle.get('Speed', 0)} km/h",
+        "raw_speed": vehicle.get("Speed", 0),
+        "time": snap_time,
+        "class_id": class_id,
+        "class_name": class_name,
+        "classification_reason": class_reason,
+        "device_id": snap.get("DeviceID") or "",
+        "lane": snap.get("LanNo"),
+        "channel": plate.get("Channel"),
+        "direction": "South to North",
+        "license_img": "",
+        "veh_img": "",
+        "is_detection_event": bool(picture and (plate_number or vehicle.get("VehicleType") or vehicle.get("VehicleColor") or snap.get("SnapTime"))),
+    }
+
+
+def store_event_in_db(normalized):
+    """Persist a parsed CP Plus event into the shared vehicle log table."""
+    if not normalized.get("is_detection_event"):
+        return {"success": True, "skipped": True, "message": "No vehicle/plate detection data in payload"}
+
+    try:
+        ensure_database()
+        ensure_table()
+        upsert_vehicle_log(
+            track_id=normalized["track_id"],
+            class_name=normalized["class_name"],
+            avg_speed=normalized["speed"],
+            license_text=normalized["license"],
+            time_value=normalized["time"],
+            class_id=normalized["class_id"],
+            camera_name=normalized["camera_name"],
+            source_type="cp_plus_anpr",
+            license_img=normalized.get("license_img", ""),
+            veh_img=normalized.get("veh_img", ""),
+        )
+        return {"success": True}
+    except Exception as e:
+        print("[CP PLUS] DB insert skipped:", e)
+        return {"success": False, "message": str(e)}

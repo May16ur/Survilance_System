@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+node_modules/
+dist/
+*.log
+backend/uploads/
+backend/flask_app/static/logs/
+backend/flask_app/static/debug_ocr/
+backend/flask_app/static/anpr/
+backend/flask_app/static/20*/
+received/
+backend/received/*
+!backend/received/.gitkeep

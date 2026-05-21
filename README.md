@@ -1,0 +1,59 @@
+# Surveillance System
+
+New split structure:
+
+- `backend/` - Flask API, RTSP/video processing, tollgate notification receiver, database helpers, models.
+- `frontend/` - React/Vite operator UI.
+
+## Run Backend
+
+```powershell
+cd backend
+python -m pip install -r requirements.txt
+python app.py
+```
+
+Backend defaults to `http://127.0.0.1:5000`.
+
+If you use the old conda setup, run the backend from that environment:
+
+```powershell
+conda activate vehicle
+cd C:\Users\VICTUS\Desktop\Survilance_System\backend
+python app.py
+```
+
+## Run Frontend
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend defaults to `http://127.0.0.1:5173`.
+
+## Integrated Receiver Endpoints
+
+- `POST /NotificationInfo/TollgateInfo`
+- `POST /NotificationInfo/KeepAlive`
+- `GET /api/notifications/recent`
+
+Received tollgate payloads and files are saved under `backend/received/`.
+
+CP Plus ANPR events are now the primary detection source. The backend parses:
+
+- `Picture.Plate.PlateNumber`
+- `Picture.Plate.Confidence`
+- `Picture.Vehicle.VehicleType`
+- `Picture.Vehicle.VehicleColor`
+- `Picture.Vehicle.Speed`
+- `Picture.SnapInfo.SnapTime`
+- `Picture.VehiclePic.Content`
+
+The vehicle image is decoded and saved under `backend/flask_app/static/anpr/`, then the parsed event is inserted into `vehicle_logs` with `source_type='cp_plus_anpr'`.
+
+## Notes
+
+- The model files are now under `backend/`: `veh.pt`, `best.pt`, and `license.pt`.
+- In the current global Python install, Torch fails to import because `torch\lib\shm.dll` cannot load. Use the known working `vehicle` conda environment or reinstall a matching Torch build before running the backend.

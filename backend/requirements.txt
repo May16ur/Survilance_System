@@ -1,0 +1,13 @@
+flask
+flask-cors
+waitress
+opencv-python
+numpy
+ultralytics
+supervision
+torch
+torchvision
+psycopg2-binary
+easyocr
+paddleocr
+reportlab
