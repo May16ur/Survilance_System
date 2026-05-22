@@ -7,7 +7,7 @@ ultralytics
 supervision
 torch
 torchvision
-psycopg2-binary
+mysql-connector-python
 easyocr
 paddleocr
 reportlab

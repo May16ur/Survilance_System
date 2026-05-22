@@ -13,6 +13,7 @@ import { TcpPanel } from "./features/TcpPanel.jsx";
 import { VehicleMasterPanel } from "./features/VehicleMasterPanel.jsx";
 import { AlertsPanel } from "./features/AlertsPanel.jsx";
 import { ReceiverTable } from "./features/ReceiverTable.jsx";
+import { MapPanel } from "./features/MapPanel.jsx";
 import "./styles.css";
 
 // App keeps page state and API actions; tab screens live in src/features.
@@ -300,6 +301,15 @@ function App() {
     setVehicleMaster(data.rows || []);
   }
 
+  async function importVehicleExcel() {
+    const data = await getJson("/api/vehicle_master/import_excel", { method: "POST" });
+    setStatus(data.message || "Vehicle Excel imported.");
+    loadVehicleMaster();
+    refreshNotifications();
+    if (activeTab === "logs") loadCameraLogs(selectedCamera);
+    if (activeTab === "tcp") loadTcpReport(tcpName);
+  }
+
   async function saveVehicleMaster(event) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -388,6 +398,23 @@ function App() {
           />
         )}
 
+        {activeTab === "map" && (
+          <MapPanel
+            cameraStats={cameraStats}
+            onViewStreams={(cameraId) => {
+              setActiveTab("streams");
+            }}
+            onViewLogs={(cameraId) => {
+              setActiveTab("logs");
+              loadCameraLogs(cameraId);
+            }}
+            onViewTcp={(tcpName) => {
+              setActiveTab("tcp");
+              loadTcpReport(tcpName);
+            }}
+          />
+        )}
+
         {activeTab === "streams" && (
           <StreamsPanel
             cameras={cameras}
@@ -441,7 +468,7 @@ function App() {
         )}
 
         {activeTab === "vehicles" && (
-          <VehicleMasterPanel rows={vehicleMaster} saveVehicleMaster={saveVehicleMaster} refresh={loadVehicleMaster} />
+          <VehicleMasterPanel rows={vehicleMaster} saveVehicleMaster={saveVehicleMaster} refresh={loadVehicleMaster} importExcel={importVehicleExcel} />
         )}
 
         {activeTab === "alerts" && (

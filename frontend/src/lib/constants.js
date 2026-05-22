@@ -5,6 +5,7 @@ import {
   Camera,
   Database,
   FileVideo,
+  Map,
   ShieldAlert,
   Table2,
   Users,
@@ -23,6 +24,7 @@ export const TCP_OPTIONS = ["igoo", "kiari", "cthang", "nyoma", "loma", "hanle",
 
 export const TABS = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
+  { id: "map", label: "Map View", icon: Map },
   { id: "streams", label: "Live Cameras", icon: Camera },
   { id: "upload", label: "Video Upload", icon: FileVideo },
   { id: "logs", label: "Logs", icon: Database },

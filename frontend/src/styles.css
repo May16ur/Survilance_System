@@ -449,4 +449,231 @@ code {
   .inline-form {
     grid-template-columns: 1fr;
   }
+
+  .map-view-container {
+    grid-template-columns: 1fr;
+  }
+
+  .map-sidebar-list {
+    max-height: 300px;
+  }
+}
+
+/* Custom Camera Marker (pulsing glowing dot) */
+.camera-marker-container {
+  background: none;
+  border: none;
+}
+.custom-camera-marker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+.marker-dot {
+  width: 12px;
+  height: 12px;
+  background-color: #20c997; /* Neon teal/green */
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(32, 201, 151, 0.9);
+  z-index: 2;
+}
+.marker-pulse {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  background-color: rgba(32, 201, 151, 0.45);
+  border-radius: 50%;
+  animation: marker-pulse-animation 1.8s infinite ease-in-out;
+  pointer-events: none;
+  z-index: 1;
+}
+@keyframes marker-pulse-animation {
+  0% {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+/* Custom Leaflet Popup Styles (Cyberpunk dark/green console theme) */
+.leaflet-popup-content-wrapper {
+  background: #17212c !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5) !important;
+  border: 1px solid #2d3d4d !important;
+}
+.leaflet-popup-tip {
+  background: #17212c !important;
+  border: 1px solid #2d3d4d !important;
+}
+.leaflet-popup-content {
+  margin: 12px 14px 10px 14px !important;
+}
+.map-popup-card {
+  font-family: Inter, "Segoe UI", sans-serif;
+  min-width: 190px;
+}
+.map-popup-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #20c997;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #2d3d4d;
+  padding-bottom: 6px;
+  text-align: center;
+}
+.map-popup-desc {
+  font-size: 11px;
+  color: #aeb8c3;
+  margin: 0 0 10px 0;
+  line-height: 1.4;
+}
+.map-popup-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+  background: transparent !important;
+}
+.map-popup-table th, 
+.map-popup-table td {
+  border: 1px solid #2d3d4d !important;
+  padding: 5px 8px !important;
+  font-size: 11px !important;
+  color: #d6dde6 !important;
+  background: transparent !important;
+  text-align: left;
+}
+.map-popup-table th {
+  background: #253341 !important;
+  font-weight: 600;
+}
+.map-popup-table tr.total-row td {
+  font-weight: bold;
+  color: #20c997 !important;
+  border-top: 2px solid #2d3d4d !important;
+}
+.map-popup-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.map-action-btn {
+  flex: 1;
+  background: #198754;
+  color: #ffffff;
+  border: none;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.map-action-btn:hover {
+  background: #20c997;
+}
+.map-action-btn.logs {
+  background: #343a40;
+  border: 1px solid #495057;
+}
+.map-action-btn.logs:hover {
+  background: #495057;
+}
+.map-action-btn.tcp {
+  background: #ffc107;
+  color: #000000;
+}
+.map-action-btn.tcp:hover {
+  background: #e0a800;
+}
+
+/* Map Panel Layout */
+.map-view-container {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) 280px;
+  gap: 16px;
+}
+.map-holder {
+  position: relative;
+  width: 100%;
+  height: 600px;
+  border-radius: 8px;
+  border: 1px solid #d8dee6;
+  overflow: hidden;
+  background: #111820;
+}
+.map-sidebar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 600px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.map-sidebar-card {
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border: 1px solid #d8dee6;
+  border-radius: 8px;
+  padding: 12px;
+}
+.map-sidebar-title {
+  font-size: 15px;
+  font-weight: bold;
+  margin: 0 0 10px 0;
+  color: #17212c;
+  border-bottom: 1px solid #e5e9ee;
+  padding-bottom: 8px;
+}
+.map-cam-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: auto;
+  text-align: left;
+}
+.map-cam-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+.map-cam-btn span.cam-id {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-right: 6px;
+}
+.map-cam-btn .cam-total-badge {
+  font-size: 11px;
+  font-weight: bold;
+  background: #e2e8f0;
+  color: #475569;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.map-cam-btn:hover .cam-total-badge {
+  background: #dfeee8;
+  color: #176449;
 }

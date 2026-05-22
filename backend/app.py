@@ -8,7 +8,7 @@ os.environ["FLAGS_enable_pir_api"] = "0"
 from waitress import serve
 from flask_cors import CORS
 from flask_app import create_app
-from core.common import ensure_database, ensure_table
+from core.common import ensure_database, ensure_table, import_vehicle_details_from_excel
 
 try:
     from core.license_utils import get_paddle_ocr
@@ -23,6 +23,11 @@ CORS(app, resources={r"/*": {"origins": os.getenv("FRONTEND_ORIGIN", "*")}})
 if __name__ == "__main__":
     ensure_database()
     ensure_table()
+    try:
+        result = import_vehicle_details_from_excel()
+        print("[APP]", result.get("message"))
+    except Exception as e:
+        print("[APP] Vehicle Excel import skipped:", e)
 
     # Preload PaddleOCR at startup so the first detected vehicle does not freeze the stream.
     try:

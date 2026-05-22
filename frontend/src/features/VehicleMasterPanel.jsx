@@ -1,7 +1,7 @@
 import { RefreshCw, Save } from "lucide-react";
 import { SimpleTable } from "../components/Tables.jsx";
 
-export function VehicleMasterPanel({ rows, saveVehicleMaster, refresh }) {
+export function VehicleMasterPanel({ rows, saveVehicleMaster, refresh, importExcel }) {
   return (
     <section className="panel stack">
       <form className="vehicle-form" onSubmit={saveVehicleMaster}>
@@ -13,6 +13,7 @@ export function VehicleMasterPanel({ rows, saveVehicleMaster, refresh }) {
         <input name="remarks" placeholder="Remarks" />
         <button><Save size={17} /> Save Vehicle</button>
         <button type="button" onClick={refresh}><RefreshCw size={17} /> Refresh</button>
+        <button type="button" onClick={importExcel}><RefreshCw size={17} /> Import Excel</button>
       </form>
       <SimpleTable
         title="Vehicle Master"

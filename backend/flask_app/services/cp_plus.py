@@ -7,7 +7,14 @@ import cv2
 import numpy as np
 from flask import request
 
-from core.common import CAMERA_NAME_MAP, classify_vehicle_from_anpr, ensure_database, ensure_table, upsert_vehicle_log
+from core.common import (
+    CAMERA_NAME_MAP,
+    classify_vehicle_from_anpr,
+    ensure_database,
+    ensure_table,
+    get_vehicle_master_info,
+    upsert_vehicle_log,
+)
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -148,6 +155,8 @@ def normalize_event(data, event_file=None):
         vehicle_type=vehicle.get("VehicleType") or "",
     )
 
+    master = get_vehicle_master_info(plate_number) if plate_number else None
+
     return {
         "event_file": event_file or "",
         "source_type": "cp_plus_anpr",
@@ -160,6 +169,12 @@ def normalize_event(data, event_file=None):
         "plate_color": plate.get("PlateColor") or "",
         "plate_type": plate.get("PlateType") or "",
         "vehicle_type": vehicle.get("VehicleType") or "",
+        "vehicle_type_master": (master or {}).get("vehicle_type", ""),
+        "unit": (master or {}).get("unit", ""),
+        "driver_name": (master or {}).get("driver_name", ""),
+        "make_model": (master or {}).get("make_model", ""),
+        "vehicle_remarks": (master or {}).get("remarks", ""),
+        "vehicle_master_match": bool(master),
         "vehicle_color": vehicle.get("VehicleColor") or "",
         "speed": f"{vehicle.get('Speed', 0)} km/h",
         "raw_speed": vehicle.get("Speed", 0),

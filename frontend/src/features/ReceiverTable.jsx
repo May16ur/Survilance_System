@@ -4,7 +4,7 @@ export function ReceiverTable({ events }) {
       <table>
         <thead>
           <tr>
-            <th>Plate</th><th>Confidence</th><th>Vehicle</th><th>Class</th><th>Color</th>
+            <th>Plate</th><th>Unit</th><th>Confidence</th><th>Vehicle</th><th>Class</th><th>Color</th>
             <th>Speed</th><th>Camera</th><th>Time</th><th>Vehicle Image</th><th>Plate Image</th>
           </tr>
         </thead>
@@ -14,6 +14,7 @@ export function ReceiverTable({ events }) {
             return (
               <tr key={event.event_file}>
                 <td>{row.plate_number || row.license || "UNKNOWN"}</td>
+                <td>{row.unit || ""}</td>
                 <td>{row.plate_confidence ?? ""}</td>
                 <td>{row.vehicle_type || row.class_name || ""}</td>
                 <td>{row.class_name || ""}</td>
@@ -26,7 +27,7 @@ export function ReceiverTable({ events }) {
               </tr>
             );
           })}
-          {!events?.length && <tr><td colSpan="10" className="empty-table">No receiver events found.</td></tr>}
+          {!events?.length && <tr><td colSpan="11" className="empty-table">No receiver events found.</td></tr>}
         </tbody>
       </table>
     </div>

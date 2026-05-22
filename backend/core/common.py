@@ -1,27 +1,24 @@
 import os
 import re
 import json
+import zipfile
 import cv2
 import numpy as np
 import datetime
 import threading
 from collections import Counter
+from xml.etree import ElementTree as ET
 
-import psycopg2
-from psycopg2 import Error
-from psycopg2.extras import RealDictCursor
-
-class DictConnection(psycopg2.extensions.connection):
-    def cursor(self, *args, **kwargs):
-        dictionary = kwargs.pop('dictionary', False)
-        if dictionary:
-            kwargs['cursor_factory'] = RealDictCursor
-        return super().cursor(*args, **kwargs)
+import mysql.connector
+from mysql.connector import Error
+from mysql.connector import pooling
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
 VEHICLE_MODEL_PATH = os.path.join(BASE_DIR, "veh.pt")
 LICENSE_MODEL_PATH = os.path.join(BASE_DIR, "best.pt")
+VEH_DETAILS_PATH = os.getenv("VEH_DETAILS_PATH", os.path.join(PROJECT_ROOT, "VEH DETAILS.xlsx"))
 
 LOG_DIR = os.path.join(BASE_DIR, "flask_app", "static", "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -82,10 +79,10 @@ def get_camera_aliases(camera_name):
 
 MYSQL_CONFIG = {
     "host": "localhost",
-    "user": "postgres",
-    "password": "admin",
+    "user": "root",
+    "password": "root",
     "database": "vehicle_logsnew",
-    "port": 5432,
+    "port": 3306,
 }
 MYSQL_POOL = None
 VEHICLE_LOG_UPDATE_WINDOW_SEC = int(os.getenv("ETCP_VEHICLE_LOG_UPDATE_WINDOW_SEC", "300"))
@@ -98,6 +95,7 @@ db_lock = threading.Lock()
 log_lock = threading.Lock()
 logs_dict = {"uploadLogs": {}, "streamLogs": {}}
 license_text_cache = {}
+vehicle_details_cache = {"mtime": None, "rows": {}}
 
 DEFAULT_CAMERA_POLYGONS = {
     1: np.array([[10, 70], [480, 70], [454, 354], [20, 348]], dtype=np.int32),
@@ -151,58 +149,59 @@ def save_logs_dict(data, file_path=LOG_FILE_PATH):
         json.dump(data, f, indent=4, default=convert_to_serializable)
 
 def _mysql_no_db_connection():
-    config = MYSQL_CONFIG.copy()
-    config["database"] = "postgres"
-    return psycopg2.connect(connection_factory=DictConnection, **config)
+    return mysql.connector.connect(host=MYSQL_CONFIG["host"], user=MYSQL_CONFIG["user"], password=MYSQL_CONFIG["password"], port=MYSQL_CONFIG["port"])
 
 def _get_connection():
-    return psycopg2.connect(connection_factory=DictConnection, **MYSQL_CONFIG)
+    global MYSQL_POOL
+    try:
+        if MYSQL_POOL is None:
+            MYSQL_POOL = pooling.MySQLConnectionPool(
+                pool_name="vehicle_logs_pool",
+                pool_size=12,
+                pool_reset_session=True,
+                **MYSQL_CONFIG,
+            )
+        return MYSQL_POOL.get_connection()
+    except Exception:
+        return mysql.connector.connect(**MYSQL_CONFIG)
 
 
 
 def _column_exists(cur, table_name, column_name):
-    """Return True if column exists in current PostgreSQL database table."""
+    """Return True if column exists in current MySQL database table."""
     try:
         cur.execute(
             """
             SELECT COUNT(*)
             FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = 'public'
+            WHERE TABLE_SCHEMA = %s
               AND TABLE_NAME = %s
               AND COLUMN_NAME = %s
             """,
-            (table_name, column_name),
+            (MYSQL_CONFIG["database"], table_name, column_name),
         )
         row = cur.fetchone()
-        if isinstance(row, dict):
-            val = list(row.values())[0]
-        else:
-            val = row[0]
-        return bool(row and val > 0)
+        return bool(row and row[0] > 0)
     except Exception as e:
         print(f"[DB] _column_exists error for {table_name}.{column_name}:", e)
         return False
 
 
 def _index_exists(cur, table_name, index_name):
-    """Return True if index exists in current PostgreSQL database table."""
+    """Return True if index exists in current MySQL database table."""
     try:
         cur.execute(
             """
             SELECT COUNT(*)
-            FROM pg_indexes
-            WHERE schemaname = 'public'
-              AND tablename = %s
-              AND indexname = %s
+            FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE TABLE_SCHEMA = %s
+              AND TABLE_NAME = %s
+              AND INDEX_NAME = %s
             """,
-            (table_name, index_name),
+            (MYSQL_CONFIG["database"], table_name, index_name),
         )
         row = cur.fetchone()
-        if isinstance(row, dict):
-            val = list(row.values())[0]
-        else:
-            val = row[0]
-        return bool(row and val > 0)
+        return bool(row and row[0] > 0)
     except Exception as e:
         print(f"[DB] _index_exists error for {table_name}.{index_name}:", e)
         return False
@@ -211,22 +210,11 @@ def _index_exists(cur, table_name, index_name):
 def ensure_database():
     conn = None
     try:
-        config = MYSQL_CONFIG.copy()
-        config["database"] = "postgres"
-        conn = psycopg2.connect(connection_factory=DictConnection, **config)
-        conn.autocommit = True
-        cur = conn.cursor()
-        
-        # Check if database exists
-        cur.execute("SELECT 1 FROM pg_database WHERE datname = 'vehicle_logsnew'")
-        exists = cur.fetchone()
-        if not exists:
-            cur.execute("CREATE DATABASE vehicle_logsnew")
-        
-        cur.close()
-        conn.close()
+        conn = _mysql_no_db_connection(); cur = conn.cursor()
+        cur.execute("CREATE DATABASE IF NOT EXISTS vehicle_logsnew CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci")
+        conn.commit(); cur.close(); conn.close()
         ensure_table()
-    except Exception as e:
+    except Error as e:
         print("Database creation error:", e)
         if conn:
             try: conn.close()
@@ -241,15 +229,6 @@ def ensure_table():
     conn = None
     try:
         conn = _get_connection(); cur = conn.cursor()
-        
-        # Create DATE overloaded helper functions in PostgreSQL
-        try:
-            cur.execute("CREATE OR REPLACE FUNCTION DATE(timestamp) RETURNS date AS $$ SELECT $1::date; $$ LANGUAGE SQL IMMUTABLE;")
-            cur.execute("CREATE OR REPLACE FUNCTION DATE(timestamptz) RETURNS date AS $$ SELECT $1::date; $$ LANGUAGE SQL IMMUTABLE;")
-            cur.execute("CREATE OR REPLACE FUNCTION DATE(date) RETURNS date AS $$ SELECT $1; $$ LANGUAGE SQL IMMUTABLE;")
-        except Exception as e:
-            print("[DB] DATE helper functions creation skipped or already exists:", e)
-            
         statements = [
             """
             CREATE TABLE IF NOT EXISTS camera_master (
@@ -260,13 +239,15 @@ def ensure_table():
                 direction_type VARCHAR(20),
                 location_x INT DEFAULT 0,
                 location_y INT DEFAULT 0,
-                is_active SMALLINT DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
+                is_active TINYINT DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_tcp_name (tcp_name),
+                INDEX idx_active (is_active)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """,
             """
             CREATE TABLE IF NOT EXISTS vehicle_logs (
-                id BIGSERIAL PRIMARY KEY,
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 track_id INT,
                 camera_id INT,
                 camera_name VARCHAR(120),
@@ -281,23 +262,31 @@ def ensure_table():
                 veh_img VARCHAR(255),
                 plate_img VARCHAR(255),
                 license_img VARCHAR(255),
-                detection_time TIMESTAMP,
-                time TIMESTAMP,
+                detection_time DATETIME,
+                time DATETIME,
                 detection_date DATE,
                 log_date DATE,
                 source_type VARCHAR(30) DEFAULT 'stream',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_camera_date (camera_name, detection_date),
+                INDEX idx_camera_id_date (camera_id, detection_date),
+                INDEX idx_license_date (license_plate, detection_date),
+                INDEX idx_detection_time (detection_time),
+                INDEX idx_camera_license_time (camera_name, license_plate, detection_time),
+                INDEX idx_class_date (class_id, detection_date),
+                INDEX idx_time (time),
+                INDEX idx_log_date_time (log_date, time)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """,
             """
             CREATE TABLE IF NOT EXISTS tcp_movements (
-                id BIGSERIAL PRIMARY KEY,
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 tcp_name VARCHAR(50),
                 in_camera VARCHAR(120),
                 out_camera VARCHAR(120),
                 license_plate VARCHAR(50),
-                time_in TIMESTAMP,
-                time_out TIMESTAMP,
+                time_in DATETIME,
+                time_out DATETIME,
                 speed_in VARCHAR(50),
                 speed_out VARCHAR(50),
                 vehicle_class VARCHAR(50),
@@ -307,12 +296,17 @@ def ensure_table():
                 status VARCHAR(30) DEFAULT 'IN',
                 remarks VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_tcp_status (tcp_name, status),
+                INDEX idx_tcp_license (tcp_name, license_plate),
+                INDEX idx_license_time (license_plate, time_in, time_out),
+                INDEX idx_time_in (time_in),
+                INDEX idx_time_out (time_out)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """,
             """
             CREATE TABLE IF NOT EXISTS vehicle_master (
-                id BIGSERIAL PRIMARY KEY,
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 license_plate VARCHAR(50) NOT NULL,
                 license_norm VARCHAR(50) NOT NULL,
                 make_model VARCHAR(120),
@@ -321,47 +315,24 @@ def ensure_table():
                 driver_name VARCHAR(120),
                 remarks VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                CONSTRAINT uniq_license_norm UNIQUE (license_norm)
-            )
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_license_norm (license_norm),
+                INDEX idx_license_plate (license_plate)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """,
             """
             CREATE TABLE IF NOT EXISTS blacklisted_vehicles (
-                id BIGSERIAL PRIMARY KEY,
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 license_plate VARCHAR(50) NOT NULL,
                 license_norm VARCHAR(50) NOT NULL,
                 remarks VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                CONSTRAINT uniq_blacklist_license UNIQUE (license_norm)
-            )
+                UNIQUE KEY uniq_blacklist_license (license_norm),
+                INDEX idx_blacklist_plate (license_plate)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """,
         ]
         _execute_many(cur, statements)
-
-        # Create separate indexes if not exists
-        try:
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_tcp_name ON camera_master (tcp_name)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_active ON camera_master (is_active)")
-            
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_camera_date ON vehicle_logs (camera_name, detection_date)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_camera_id_date ON vehicle_logs (camera_id, detection_date)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_license_date ON vehicle_logs (license_plate, detection_date)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_detection_time ON vehicle_logs (detection_time)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_camera_license_time ON vehicle_logs (camera_name, license_plate, detection_time)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_class_date ON vehicle_logs (class_id, detection_date)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_time ON vehicle_logs (time)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_log_date_time ON vehicle_logs (log_date, time)")
-            
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_tcp_status ON tcp_movements (tcp_name, status)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_tcp_license ON tcp_movements (tcp_name, license_plate)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_license_time ON tcp_movements (license_plate, time_in, time_out)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_time_in ON tcp_movements (time_in)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_time_out ON tcp_movements (time_out)")
-            
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_license_plate ON vehicle_master (license_plate)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_blacklist_plate ON blacklisted_vehicles (license_plate)")
-        except Exception as e:
-            print("[DB] Index creation skipped or already exists:", e)
 
         # Self-heal existing vehicle_logs table created with older/new-only schema.
         # This prevents errors like: Unknown column 'class_name' in 'field list'.
@@ -380,8 +351,8 @@ def ensure_table():
             "veh_img": "VARCHAR(255) NULL",
             "plate_img": "VARCHAR(255) NULL",
             "license_img": "VARCHAR(255) NULL",
-            "detection_time": "TIMESTAMP NULL",
-            "time": "TIMESTAMP NULL",
+            "detection_time": "DATETIME NULL",
+            "time": "DATETIME NULL",
             "detection_date": "DATE NULL",
             "log_date": "DATE NULL",
             "source_type": "VARCHAR(30) DEFAULT 'stream'",
@@ -418,13 +389,32 @@ def ensure_table():
         except Error as e:
             print("[DB] Compatibility column sync skipped:", e)
 
+        # Add indexes if missing; safe for existing tables.
+        index_specs = {
+            "idx_camera_date": "camera_name, detection_date",
+            "idx_camera_id_date": "camera_id, detection_date",
+            "idx_license_date": "license_plate, detection_date",
+            "idx_detection_time": "detection_time",
+            "idx_camera_license_time": "camera_name, license_plate, detection_time",
+            "idx_class_date": "class_id, detection_date",
+            "idx_time": "time",
+            "idx_log_date_time": "log_date, time",
+        }
+        for idx_name, idx_cols in index_specs.items():
+            if not _index_exists(cur, "vehicle_logs", idx_name):
+                try:
+                    cur.execute(f"ALTER TABLE vehicle_logs ADD INDEX {idx_name} ({idx_cols})")
+                    print(f"[DB] Added index {idx_name}")
+                except Error as e:
+                    print(f"[DB] Index add skipped {idx_name}:", e)
+
         # Seed camera master without overwriting rtsp_link.
         for cid, cname in CAMERA_NAME_MAP.items():
             tcp_name, direction = _camera_tcp_info(cname)
             cur.execute("""
                 INSERT INTO camera_master (id, camera_name, tcp_name, direction_type)
                 VALUES (%s,%s,%s,%s)
-                ON CONFLICT (id) DO UPDATE SET camera_name=EXCLUDED.camera_name, tcp_name=EXCLUDED.tcp_name, direction_type=EXCLUDED.direction_type
+                ON DUPLICATE KEY UPDATE camera_name=VALUES(camera_name), tcp_name=VALUES(tcp_name), direction_type=VALUES(direction_type)
             """, (cid, cname, tcp_name, direction))
         conn.commit(); cur.close(); conn.close()
     except Error as e:
@@ -667,7 +657,7 @@ def upsert_vehicle_log(
                 WHERE camera_name = %s
                   AND track_id = %s
                   AND detection_date = %s
-                  AND ABS(EXTRACT(EPOCH FROM (detection_time - %s))) <= %s
+                  AND ABS(TIMESTAMPDIFF(SECOND, detection_time, %s)) <= %s
                 ORDER BY id DESC
                 LIMIT 1
                 """,
@@ -870,8 +860,8 @@ def _update_tcp_movement(cur, camera_name, lic, dt, speed, class_name, class_id,
           AND license_plate = %s
           AND time_out IS NULL
           AND TRIM(LOWER(in_camera)) <> TRIM(LOWER(%s))
-          AND ABS(EXTRACT(EPOCH FROM (time_in - %s))) <= 86400
-        ORDER BY ABS(EXTRACT(EPOCH FROM (time_in - %s))) ASC
+          AND ABS(TIMESTAMPDIFF(HOUR, time_in, %s)) <= 24
+        ORDER BY ABS(TIMESTAMPDIFF(SECOND, time_in, %s)) ASC
         LIMIT 1
         """,
         (tcp, lic, camera_name, dt, dt),
@@ -949,7 +939,7 @@ def _update_tcp_movement(cur, camera_name, lic, dt, speed, class_name, class_id,
           AND license_plate = %s
           AND time_out IS NULL
           AND TRIM(LOWER(in_camera)) = TRIM(LOWER(%s))
-          AND ABS(EXTRACT(EPOCH FROM (time_in - %s))) <= 600
+          AND ABS(TIMESTAMPDIFF(MINUTE, time_in, %s)) <= 10
         ORDER BY time_in DESC
         LIMIT 1
         """,
@@ -1087,7 +1077,7 @@ def fetch_recent_logs(camera_name=None, camera_id=None, limit=200, start_date=No
             ORDER BY detection_time DESC, id DESC
             LIMIT %s
         """, tuple(params+[int(limit)]))
-        rows=[_row_to_log(r) for r in cur.fetchall()]
+        rows=enrich_rows_with_vehicle_master([_row_to_log(r) for r in cur.fetchall()])
         cur.close(); conn.close()
         return rows
     except Error as e:
@@ -1495,7 +1485,7 @@ def build_tcp_report_rows(tcp_name="all", limit=300, start_date=None, end_date=N
 
         result_rows.sort(key=lambda r: r.get("time_in") or "", reverse=True)
 
-        display_rows = result_rows[:limit]
+        display_rows = enrich_rows_with_vehicle_master(result_rows[:limit])
         for i, row in enumerate(display_rows, 1):
             row["ser_no"] = i
             row["ser"] = i
@@ -1690,12 +1680,165 @@ def get_camera_today_db_stats(camera_id=None, camera_name=None, date_value=None)
         }
 
 def ensure_vehicle_master_table(): ensure_table()
+
+def _xlsx_col_index(cell_ref):
+    letters = "".join(ch for ch in str(cell_ref or "") if ch.isalpha()).upper()
+    idx = 0
+    for ch in letters:
+        idx = idx * 26 + (ord(ch) - ord("A") + 1)
+    return max(0, idx - 1)
+
+def _read_first_xlsx_sheet_rows(path):
+    ns = {
+        "a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+        "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+        "rel": "http://schemas.openxmlformats.org/package/2006/relationships",
+    }
+    with zipfile.ZipFile(path) as zf:
+        shared = []
+        if "xl/sharedStrings.xml" in zf.namelist():
+            root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+            for item in root.findall("a:si", ns):
+                shared.append("".join(t.text or "" for t in item.findall(".//a:t", ns)))
+
+        book = ET.fromstring(zf.read("xl/workbook.xml"))
+        first_sheet = book.find("a:sheets/a:sheet", ns)
+        rel_id = first_sheet.attrib[f"{{{ns['r']}}}id"]
+        rels = ET.fromstring(zf.read("xl/_rels/workbook.xml.rels"))
+        target = None
+        for rel in rels.findall("rel:Relationship", ns):
+            if rel.attrib.get("Id") == rel_id:
+                target = rel.attrib["Target"].lstrip("/")
+                break
+        sheet_path = "xl/" + target if not target.startswith("xl/") else target
+        sheet = ET.fromstring(zf.read(sheet_path))
+
+        rows = []
+        for row_el in sheet.findall(".//a:sheetData/a:row", ns):
+            values = []
+            for cell in row_el.findall("a:c", ns):
+                col_idx = _xlsx_col_index(cell.attrib.get("r", "A"))
+                while len(values) <= col_idx:
+                    values.append("")
+                cell_type = cell.attrib.get("t")
+                value_el = cell.find("a:v", ns)
+                if cell_type == "inlineStr":
+                    value = "".join(t.text or "" for t in cell.findall(".//a:t", ns))
+                elif value_el is None:
+                    value = ""
+                elif cell_type == "s":
+                    value = shared[int(value_el.text or 0)] if shared else ""
+                else:
+                    value = value_el.text or ""
+                values[col_idx] = str(value).strip()
+            rows.append(values)
+        return rows
+
+def import_vehicle_details_from_excel(path=None):
+    path = path or VEH_DETAILS_PATH
+    if not os.path.exists(path):
+        return {"success": False, "message": f"Excel file not found: {path}", "imported": 0}
+
+    rows = _read_first_xlsx_sheet_rows(path)
+    header_idx = None
+    header = []
+    for idx, row in enumerate(rows):
+        normalized = [re.sub(r"\s+", " ", str(v or "")).strip().upper() for v in row]
+        if "VEH BA NO" in normalized and "UNIT" in normalized:
+            header_idx = idx
+            header = normalized
+            break
+    if header_idx is None:
+        return {"success": False, "message": "Could not find VEH BA NO / UNIT columns", "imported": 0}
+
+    plate_idx = header.index("VEH BA NO")
+    type_idx = header.index("VEH TYPE") if "VEH TYPE" in header else None
+    unit_idx = header.index("UNIT")
+
+    imported = skipped = 0
+    try:
+        conn = _get_connection()
+    except Error as e:
+        return {"success": False, "message": f"MySQL unavailable: {e}", "imported": 0, "skipped": skipped, "path": path}
+
+    cur = conn.cursor()
+    try:
+        for row in rows[header_idx + 1:]:
+            plate = str(row[plate_idx] if plate_idx < len(row) else "").upper().strip()
+            norm = normalize_match_license(plate)
+            if not norm:
+                skipped += 1
+                continue
+            vehicle_type = str(row[type_idx] if type_idx is not None and type_idx < len(row) else "").strip()
+            unit = str(row[unit_idx] if unit_idx < len(row) else "").strip()
+            cur.execute(
+                """
+                INSERT INTO vehicle_master
+                    (license_plate, license_norm, make_model, vehicle_type, unit, driver_name, remarks)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    license_plate=VALUES(license_plate),
+                    vehicle_type=VALUES(vehicle_type),
+                    unit=VALUES(unit),
+                    remarks=VALUES(remarks)
+                """,
+                (plate, norm, "", vehicle_type, unit, "", "Imported from VEH DETAILS.xlsx"),
+            )
+            imported += 1
+        conn.commit()
+        return {"success": True, "message": f"Imported {imported} vehicle detail rows", "imported": imported, "skipped": skipped, "path": path}
+    except Error as e:
+        conn.rollback()
+        return {"success": False, "message": str(e), "imported": 0, "skipped": skipped, "path": path}
+    finally:
+        cur.close()
+        conn.close()
+
+def get_vehicle_details_from_excel(license_plate, path=None):
+    path = path or VEH_DETAILS_PATH
+    norm = normalize_match_license(license_plate)
+    if not norm or not os.path.exists(path):
+        return None
+
+    mtime = os.path.getmtime(path)
+    if vehicle_details_cache["mtime"] != mtime:
+        rows = _read_first_xlsx_sheet_rows(path)
+        header_idx = None
+        header = []
+        for idx, row in enumerate(rows):
+            normalized = [re.sub(r"\s+", " ", str(v or "")).strip().upper() for v in row]
+            if "VEH BA NO" in normalized and "UNIT" in normalized:
+                header_idx = idx
+                header = normalized
+                break
+        details = {}
+        if header_idx is not None:
+            plate_idx = header.index("VEH BA NO")
+            type_idx = header.index("VEH TYPE") if "VEH TYPE" in header else None
+            unit_idx = header.index("UNIT")
+            for row in rows[header_idx + 1:]:
+                plate = str(row[plate_idx] if plate_idx < len(row) else "").upper().strip()
+                row_norm = normalize_match_license(plate)
+                if not row_norm:
+                    continue
+                details[row_norm] = {
+                    "license_plate": plate,
+                    "make_model": "",
+                    "vehicle_type": str(row[type_idx] if type_idx is not None and type_idx < len(row) else "").strip(),
+                    "unit": str(row[unit_idx] if unit_idx < len(row) else "").strip(),
+                    "driver_name": "",
+                    "remarks": "Matched from VEH DETAILS.xlsx",
+                }
+        vehicle_details_cache["mtime"] = mtime
+        vehicle_details_cache["rows"] = details
+    return vehicle_details_cache["rows"].get(norm)
+
 def add_or_update_vehicle_master(data):
     try:
         lic=str(data.get('license_plate') or data.get('license') or '').upper().strip(); norm=normalize_match_license(lic)
         if not norm: return {"success":False,"message":"License plate is required"}
         conn=_get_connection(); cur=conn.cursor()
-        cur.execute("""INSERT INTO vehicle_master (license_plate,license_norm,make_model,vehicle_type,unit,driver_name,remarks) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (license_norm) DO UPDATE SET license_plate=EXCLUDED.license_plate, make_model=EXCLUDED.make_model, vehicle_type=EXCLUDED.vehicle_type, unit=EXCLUDED.unit, driver_name=EXCLUDED.driver_name, remarks=EXCLUDED.remarks""", (lic,norm,data.get('make_model',''),data.get('vehicle_type',''),data.get('unit',''),data.get('driver_name',''),data.get('remarks','')))
+        cur.execute("""INSERT INTO vehicle_master (license_plate,license_norm,make_model,vehicle_type,unit,driver_name,remarks) VALUES (%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE license_plate=VALUES(license_plate), make_model=VALUES(make_model), vehicle_type=VALUES(vehicle_type), unit=VALUES(unit), driver_name=VALUES(driver_name), remarks=VALUES(remarks)""", (lic,norm,data.get('make_model',''),data.get('vehicle_type',''),data.get('unit',''),data.get('driver_name',''),data.get('remarks','')))
         conn.commit(); cur.close(); conn.close(); return {"success":True,"message":"Vehicle information saved","license_norm":norm}
     except Error as e: return {"success":False,"message":str(e)}
 def get_vehicle_master_info(license_plate):
@@ -1703,13 +1846,66 @@ def get_vehicle_master_info(license_plate):
         norm=normalize_match_license(license_plate); 
         if not norm: return None
         conn=_get_connection(); cur=conn.cursor(dictionary=True); cur.execute("SELECT license_plate,make_model,vehicle_type,unit,driver_name,remarks FROM vehicle_master WHERE license_norm=%s LIMIT 1", (norm,)); row=cur.fetchone(); cur.close(); conn.close(); return row
-    except Error: return None
+    except Error:
+        return get_vehicle_details_from_excel(license_plate)
 def get_vehicle_master_rows(limit=500):
     try:
         conn=_get_connection(); cur=conn.cursor(dictionary=True); cur.execute("SELECT id,license_plate,make_model,vehicle_type,unit,driver_name,remarks FROM vehicle_master ORDER BY updated_at DESC,id DESC LIMIT %s", (int(limit),)); rows=cur.fetchall(); cur.close(); conn.close(); return rows
     except Error: return []
 def enrich_rows_with_vehicle_master(rows):
-    # Disabled for speed and because user removed unit/driver/make-model columns.
+    if not rows:
+        return rows
+    norms = []
+    row_norms = []
+    for row in rows:
+        norm = normalize_match_license(row.get("license") or row.get("license_plate") or row.get("plate_number") or "")
+        row_norms.append(norm)
+        if norm:
+            norms.append(norm)
+    norms = list(dict.fromkeys(norms))
+    if not norms:
+        return rows
+    try:
+        conn = _get_connection()
+        cur = conn.cursor(dictionary=True)
+        placeholders = ",".join(["%s"] * len(norms))
+        cur.execute(
+            f"""
+            SELECT license_norm, license_plate, make_model, vehicle_type, unit, driver_name, remarks
+            FROM vehicle_master
+            WHERE license_norm IN ({placeholders})
+            """,
+            tuple(norms),
+        )
+        master = {row["license_norm"]: row for row in cur.fetchall()}
+        cur.close()
+        conn.close()
+        for row, norm in zip(rows, row_norms):
+            detail = master.get(norm)
+            if not detail:
+                row["vehicle_master_match"] = False
+                continue
+            row["vehicle_master_match"] = True
+            row["master_license"] = detail.get("license_plate") or ""
+            row["make_model"] = detail.get("make_model") or ""
+            row["vehicle_type_master"] = detail.get("vehicle_type") or ""
+            row["unit"] = detail.get("unit") or ""
+            row["driver_name"] = detail.get("driver_name") or ""
+            row["vehicle_remarks"] = detail.get("remarks") or ""
+    except Error as e:
+        print("Vehicle master enrichment error:", e)
+        for row in rows:
+            detail = get_vehicle_details_from_excel(row.get("license") or row.get("license_plate") or row.get("plate_number") or "")
+            if not detail:
+                row["vehicle_master_match"] = False
+                continue
+            row["vehicle_master_match"] = True
+            row["master_license"] = detail.get("license_plate") or ""
+            row["make_model"] = detail.get("make_model") or ""
+            row["vehicle_type_master"] = detail.get("vehicle_type") or ""
+            row["unit"] = detail.get("unit") or ""
+            row["driver_name"] = detail.get("driver_name") or ""
+            row["vehicle_remarks"] = detail.get("remarks") or ""
     return rows
 
 def update_vehicle_log_row(data):

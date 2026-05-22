@@ -17,6 +17,7 @@ export function LogTable({ rows, onDelete }) {
             <th>Class</th>
             <th>Speed</th>
             <th>License</th>
+            <th>Unit</th>
             <th>Time</th>
             <th>Camera</th>
             <th>Source</th>
@@ -35,6 +36,7 @@ export function LogTable({ rows, onDelete }) {
                 <td>{row["Class Name"] || row.class_name || ""}</td>
                 <td>{row["Avg Speed"] || row.avg_speed || row.speed || ""}</td>
                 <td>{row["License"] || row.license || row.plate_no || ""}</td>
+                <td>{row.unit || ""}</td>
                 <td>{row["Time"] || row.time || row.timestamp || row.time_in || ""}</td>
                 <td>{row.camera_name || row.camera || ""}</td>
                 <td>{row.source_type || row.source_table || ""}</td>
@@ -44,7 +46,7 @@ export function LogTable({ rows, onDelete }) {
               </tr>
             );
           })}
-          {!rows?.length && <tr><td colSpan={onDelete ? 10 : 9} className="empty-table">No logs loaded.</td></tr>}
+          {!rows?.length && <tr><td colSpan={onDelete ? 11 : 10} className="empty-table">No logs loaded.</td></tr>}
         </tbody>
       </table>
     </div>
@@ -57,7 +59,7 @@ export function TcpTable({ rows }) {
       <table>
         <thead>
           <tr>
-            <th>Ser</th><th>TCP</th><th>License</th><th>Class</th><th>Track</th>
+            <th>Ser</th><th>TCP</th><th>License</th><th>Unit</th><th>Class</th><th>Track</th>
             <th>In Camera</th><th>Out Camera</th><th>Time In</th><th>Time Out</th>
             <th>Status</th><th>Plate</th><th>Vehicle</th>
           </tr>
@@ -68,6 +70,7 @@ export function TcpTable({ rows }) {
               <td>{row.ser_no || index + 1}</td>
               <td>{row.tcp}</td>
               <td>{row.license}</td>
+              <td>{row.unit || ""}</td>
               <td>{row.class_name}</td>
               <td>{row.track_id}</td>
               <td>{row.in_camera}</td>
@@ -79,7 +82,7 @@ export function TcpTable({ rows }) {
               <td>{row.vehicle ? <img className="thumb" src={row.vehicle} alt="Vehicle" /> : "No image"}</td>
             </tr>
           ))}
-          {!rows?.length && <tr><td colSpan="12" className="empty-table">No TCP rows loaded.</td></tr>}
+          {!rows?.length && <tr><td colSpan="13" className="empty-table">No TCP rows loaded.</td></tr>}
         </tbody>
       </table>
     </div>
