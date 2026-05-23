@@ -83,6 +83,7 @@ MYSQL_CONFIG = {
     "password": "root",
     "database": "vehicle_logsnew",
     "port": 3306,
+    "connection_timeout": 2,
 }
 MYSQL_POOL = None
 VEHICLE_LOG_UPDATE_WINDOW_SEC = int(os.getenv("ETCP_VEHICLE_LOG_UPDATE_WINDOW_SEC", "300"))
@@ -149,7 +150,13 @@ def save_logs_dict(data, file_path=LOG_FILE_PATH):
         json.dump(data, f, indent=4, default=convert_to_serializable)
 
 def _mysql_no_db_connection():
-    return mysql.connector.connect(host=MYSQL_CONFIG["host"], user=MYSQL_CONFIG["user"], password=MYSQL_CONFIG["password"], port=MYSQL_CONFIG["port"])
+    return mysql.connector.connect(
+        host=MYSQL_CONFIG["host"],
+        user=MYSQL_CONFIG["user"],
+        password=MYSQL_CONFIG["password"],
+        port=MYSQL_CONFIG["port"],
+        connection_timeout=MYSQL_CONFIG.get("connection_timeout", 2),
+    )
 
 def _get_connection():
     global MYSQL_POOL
@@ -164,6 +171,40 @@ def _get_connection():
         return MYSQL_POOL.get_connection()
     except Exception:
         return mysql.connector.connect(**MYSQL_CONFIG)
+
+
+def check_mysql_connection(log=True):
+    started = datetime.datetime.now()
+    try:
+        conn = _get_connection()
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT DATABASE() AS db_name, NOW() AS server_time")
+        row = cur.fetchone() or {}
+        cur.close()
+        conn.close()
+        elapsed_ms = int((datetime.datetime.now() - started).total_seconds() * 1000)
+        result = {
+            "connected": True,
+            "host": MYSQL_CONFIG["host"],
+            "port": MYSQL_CONFIG["port"],
+            "database": row.get("db_name") or MYSQL_CONFIG["database"],
+            "server_time": _fmt_dt(row.get("server_time")),
+            "latency_ms": elapsed_ms,
+        }
+        if log:
+            print(f"[MYSQL] connected {result['host']}:{result['port']}/{result['database']} in {elapsed_ms}ms")
+        return result
+    except Exception as e:
+        result = {
+            "connected": False,
+            "host": MYSQL_CONFIG["host"],
+            "port": MYSQL_CONFIG["port"],
+            "database": MYSQL_CONFIG["database"],
+            "error": str(e),
+        }
+        if log:
+            print(f"[MYSQL] disconnected {result['host']}:{result['port']}/{result['database']} - {e}")
+        return result
 
 
 
@@ -591,6 +632,98 @@ def _camera_id_from_name(camera_name):
     for cid, cname in CAMERA_NAME_MAP.items():
         if cname == camera_name: return cid
     return None
+
+def insert_vehicle_log_event(
+    track_id,
+    class_name,
+    avg_speed,
+    license_text,
+    time_value,
+    class_id,
+    camera_name,
+    source_type="cp_plus_anpr",
+    license_img="",
+    veh_img="",
+):
+    """Insert one camera event row. Used for ANPR events that do not have stable tracker ids."""
+    try:
+        dt = parse_time_value(time_value)
+        log_date = dt.date()
+        lic = normalize_plate_text(license_text) or "UNKNOWN"
+        camera_id = _camera_id_from_name(camera_name)
+
+        try:
+            rule_cls_id, rule_class_name = class_from_license_rule(lic)
+            if rule_cls_id is not None:
+                class_id = rule_cls_id
+                class_name = rule_class_name
+        except Exception:
+            pass
+
+        with db_lock:
+            conn = _get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO vehicle_logs
+                (
+                    track_id,
+                    camera_id,
+                    camera_name,
+                    vehicle_class,
+                    class_name,
+                    class_id,
+                    license_plate,
+                    license,
+                    speed,
+                    avg_speed,
+                    vehicle_img,
+                    veh_img,
+                    plate_img,
+                    license_img,
+                    detection_time,
+                    time,
+                    detection_date,
+                    log_date,
+                    source_type
+                )
+                VALUES
+                (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s
+                )
+                """,
+                (
+                    int(track_id),
+                    camera_id,
+                    camera_name,
+                    class_name,
+                    class_name,
+                    int(class_id),
+                    lic,
+                    lic,
+                    avg_speed,
+                    avg_speed,
+                    veh_img,
+                    veh_img,
+                    license_img,
+                    license_img,
+                    dt,
+                    dt,
+                    log_date,
+                    log_date,
+                    source_type,
+                ),
+            )
+            inserted_id = cur.lastrowid
+            _update_tcp_movement(cur, camera_name, lic, dt, avg_speed, class_name, int(class_id), veh_img, license_img)
+            conn.commit()
+            cur.close()
+            conn.close()
+            return {"success": True, "inserted": True, "id": inserted_id}
+    except Exception as e:
+        print("MySQL event insert error:", e)
+        return {"success": False, "message": str(e)}
 
 def upsert_vehicle_log(
     track_id,

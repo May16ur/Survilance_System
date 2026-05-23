@@ -1,5 +1,9 @@
 import os
 
+from env_loader import load_project_env
+
+load_project_env()
+
 os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
 os.environ["FLAGS_use_mkldnn"] = "0"
 os.environ["PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT"] = "0"
@@ -8,7 +12,7 @@ os.environ["FLAGS_enable_pir_api"] = "0"
 from waitress import serve
 from flask_cors import CORS
 from flask_app import create_app
-from core.common import ensure_database, ensure_table, import_vehicle_details_from_excel
+from core.common import check_mysql_connection, ensure_database, ensure_table, import_vehicle_details_from_excel
 
 try:
     from core.license_utils import get_paddle_ocr
@@ -21,6 +25,7 @@ app = create_app()
 CORS(app, resources={r"/*": {"origins": os.getenv("FRONTEND_ORIGIN", "*")}})
 
 if __name__ == "__main__":
+    check_mysql_connection(log=True)
     ensure_database()
     ensure_table()
     try:

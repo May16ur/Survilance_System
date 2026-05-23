@@ -7,13 +7,15 @@ New split structure:
 
 ## Run Backend
 
+Copy `.env.example` to `.env` and set the port/IP for the client machine.
+
 ```powershell
 cd backend
 python -m pip install -r requirements.txt
 python app.py
 ```
 
-Backend defaults to `http://127.0.0.1:7070`.
+Backend currently defaults from `.env` to `http://127.0.0.1:7072`.
 
 For the CP Plus camera screen, set Platform Server to:
 

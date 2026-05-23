@@ -13,7 +13,7 @@ from core.common import (
     ensure_database,
     ensure_table,
     get_vehicle_master_info,
-    upsert_vehicle_log,
+    insert_vehicle_log_event,
 )
 
 
@@ -27,6 +27,12 @@ def safe_int(value, default=0):
         return int(value)
     except Exception:
         return default
+
+
+def event_track_id():
+    # CP Plus UploadNum/LanNo is often just lane/request number, not a vehicle track id.
+    # Use a per-event id so ANPR saves one DB row per camera event.
+    return int(datetime.datetime.now().timestamp() * 1000) % 2000000000
 
 
 def camera_from_event(data):
@@ -162,7 +168,7 @@ def normalize_event(data, event_file=None):
         "source_type": "cp_plus_anpr",
         "camera_id": camera_id,
         "camera_name": camera_name,
-        "track_id": safe_int(plate.get("UploadNum") or snap.get("LanNo") or int(datetime.datetime.now().timestamp())),
+        "track_id": event_track_id(),
         "license": plate_number or "UNKNOWN",
         "plate_number": plate_number,
         "plate_confidence": plate.get("Confidence"),
@@ -200,7 +206,7 @@ def store_event_in_db(normalized):
     try:
         ensure_database()
         ensure_table()
-        upsert_vehicle_log(
+        result = insert_vehicle_log_event(
             track_id=normalized["track_id"],
             class_name=normalized["class_name"],
             avg_speed=normalized["speed"],
@@ -212,7 +218,7 @@ def store_event_in_db(normalized):
             license_img=normalized.get("license_img", ""),
             veh_img=normalized.get("veh_img", ""),
         )
-        return {"success": True}
+        return result
     except Exception as e:
         print("[CP PLUS] DB insert skipped:", e)
         return {"success": False, "message": str(e)}
