@@ -15,6 +15,59 @@ from flask_app.services.cp_plus import ANPR_IMAGE_FOLDER
 
 bp = Blueprint("notifications", __name__)
 
+RECENT_EVENTS_FILE = os.path.join(RECEIVED_FOLDER, "recent_events.json")
+DUPLICATE_WINDOW_SEC = 3
+receiver_lock = threading.Lock()
+recent_receiver_events = deque(maxlen=200)
+recent_event_fingerprints = {}
+
+
+def _log_receiver_hit(name):
+    print(f"[CAMERA] {name} hit from {request.remote_addr} content-type={request.content_type}")
+
+
+def _event_fingerprint(data, normalized):
+    picture = (data or {}).get("Picture") or {}
+    snap = picture.get("SnapInfo") or {}
+    plate = picture.get("Plate") or {}
+    parts = [
+        str(normalized.get("license") or plate.get("PlateNumber") or ""),
+        str(normalized.get("time") or snap.get("SnapTime") or snap.get("AccurateTime") or ""),
+        str(normalized.get("device_id") or snap.get("DeviceID") or request.remote_addr or ""),
+        str(normalized.get("lane") or snap.get("LanNo") or ""),
+    ]
+    raw = "|".join(parts)
+    if raw.strip("|"):
+        return hashlib.sha1(raw.encode("utf-8", errors="ignore")).hexdigest()
+    return hashlib.sha1(json.dumps(data or {}, sort_keys=True, default=str).encode("utf-8", errors="ignore")).hexdigest()
+
+
+def _save_recent_events_locked():
+    os.makedirs(RECEIVED_FOLDER, exist_ok=True)
+    with open(RECENT_EVENTS_FILE, "w", encoding="utf-8") as event_file:
+        json.dump(list(recent_receiver_events), event_file, indent=2, ensure_ascii=False)
+
+
+def _load_recent_events():
+    if recent_receiver_events or not os.path.exists(RECENT_EVENTS_FILE):
+        return
+    try:
+        with open(RECENT_EVENTS_FILE, "r", encoding="utf-8") as event_file:
+            rows = json.load(event_file)
+        with receiver_lock:
+            recent_receiver_events.clear()
+            recent_receiver_events.extend(rows if isinstance(rows, list) else [])
+    except Exception as e:
+        print("[CAMERA] recent event load skipped:", e)
+
+
+def _remember_event(event_data, fingerprint):
+    event_data["fingerprint"] = fingerprint
+    with receiver_lock:
+        recent_receiver_events.appendleft(event_data)
+        _save_recent_events_locked()
+
+
 def _write_received_json(filename, payload):
     os.makedirs(RECEIVED_FOLDER, exist_ok=True)
     filepath = os.path.join(RECEIVED_FOLDER, filename)
