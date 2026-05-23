@@ -25,14 +25,16 @@ app = create_app()
 CORS(app, resources={r"/*": {"origins": os.getenv("FRONTEND_ORIGIN", "*")}})
 
 if __name__ == "__main__":
-    check_mysql_connection(log=True)
-    ensure_database()
-    ensure_table()
-    try:
-        result = import_vehicle_details_from_excel()
-        print("[APP]", result.get("message"))
-    except Exception as e:
-        print("[APP] Vehicle Excel import skipped:", e)
+    mysql_status = check_mysql_connection(log=True)
+    if mysql_status.get("connected"):
+        if ensure_database() and ensure_table():
+            try:
+                result = import_vehicle_details_from_excel()
+                print("[APP]", result.get("message"))
+            except Exception as e:
+                print("[APP] Vehicle Excel import skipped:", e)
+    else:
+        print("[APP] MySQL is offline. Backend will still start; DB-backed pages stay empty until MySQL is available.")
 
     # Preload PaddleOCR at startup so the first detected vehicle does not freeze the stream.
     try:

@@ -11,6 +11,15 @@ from flask_app.services.cp_plus import ANPR_IMAGE_FOLDER
 
 bp = Blueprint("notifications", __name__)
 
+def _write_received_json(filename, payload):
+    os.makedirs(RECEIVED_FOLDER, exist_ok=True)
+    filepath = os.path.join(RECEIVED_FOLDER, filename)
+    with open(filepath, "w", encoding="utf-8") as json_file:
+        json.dump(payload, json_file, indent=4, ensure_ascii=False)
+    print(f"[CAMERA] saved received payload: {filepath}")
+    return filepath
+
+
 def _assign_nested(target, dotted_key, value):
     parts = [part for part in str(dotted_key).replace("[", ".").replace("]", "").split(".") if part]
     if not parts:
@@ -87,15 +96,20 @@ def _camera_ok_response(api_payload):
 @bp.route("/api/notifications/tollgate", methods=["POST"])
 def tollgate_notification():
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    json_filename = f"{timestamp}_event.json"
 
     data = _parse_camera_payload()
 
     event_data = {
         "received_at": datetime.datetime.now().isoformat(),
         "content_type": request.content_type,
+        "remote_addr": request.remote_addr,
+        "path": request.path,
+        "method": request.method,
         "data": data,
         "files": [],
     }
+    _write_received_json(json_filename, event_data)
 
     normalized = normalize_event(data)
     veh_img, license_img, _image_bytes = decode_event_images(data, timestamp)
@@ -103,7 +117,7 @@ def tollgate_notification():
     normalized["vehicle"] = veh_img
     normalized["license_img"] = license_img
     normalized["plate"] = license_img
-    normalized["event_file"] = f"{timestamp}_event.json"
+    normalized["event_file"] = json_filename
     db_result = store_event_in_db(normalized)
     event_data["parsed"] = normalized
     event_data["db_result"] = db_result
@@ -124,10 +138,7 @@ def tollgate_notification():
         event_data["parsed"] = normalized
         event_data["db_result"] = db_result
 
-    json_filename = f"{timestamp}_event.json"
-    json_filepath = os.path.join(RECEIVED_FOLDER, json_filename)
-    with open(json_filepath, "w", encoding="utf-8") as json_file:
-        json.dump(event_data, json_file, indent=4, ensure_ascii=False)
+    _write_received_json(json_filename, event_data)
 
     clear_api_cache()
 
@@ -144,6 +155,15 @@ def tollgate_notification():
 @bp.route("/api/notifications/keepalive", methods=["POST", "GET"])
 def notification_keepalive():
     if request.path.startswith("/NotificationInfo/"):
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        _write_received_json(f"{timestamp}_keepalive.json", {
+            "received_at": datetime.datetime.now().isoformat(),
+            "content_type": request.content_type,
+            "remote_addr": request.remote_addr,
+            "path": request.path,
+            "method": request.method,
+            "data": _parse_camera_payload() if request.method == "POST" else {},
+        })
         return Response("OK", status=200, mimetype="text/plain")
     return jsonify({"success": True, "message": "OK"})
 

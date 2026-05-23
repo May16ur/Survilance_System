@@ -78,12 +78,12 @@ def get_camera_aliases(camera_name):
     return list(dict.fromkeys([str(x) for x in CAMERA_NAME_ALIASES.get(camera_name, [camera_name]) if x]))
 
 MYSQL_CONFIG = {
-    "host": "localhost",
-    "user": "root",
-    "password": "root",
-    "database": "vehicle_logsnew",
-    "port": 3306,
-    "connection_timeout": 2,
+    "host": os.getenv("MYSQL_HOST", "localhost"),
+    "user": os.getenv("MYSQL_USER", "root"),
+    "password": os.getenv("MYSQL_PASSWORD", "root"),
+    "database": os.getenv("MYSQL_DATABASE", "vehicle_logsnew"),
+    "port": int(os.getenv("MYSQL_PORT", "3306")),
+    "connection_timeout": int(os.getenv("MYSQL_CONNECTION_TIMEOUT", "2")),
 }
 MYSQL_POOL = None
 VEHICLE_LOG_UPDATE_WINDOW_SEC = int(os.getenv("ETCP_VEHICLE_LOG_UPDATE_WINDOW_SEC", "300"))
@@ -252,14 +252,18 @@ def ensure_database():
     conn = None
     try:
         conn = _mysql_no_db_connection(); cur = conn.cursor()
-        cur.execute("CREATE DATABASE IF NOT EXISTS vehicle_logsnew CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci")
+        cur.execute(
+            f"CREATE DATABASE IF NOT EXISTS `{MYSQL_CONFIG['database']}` "
+            "CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci"
+        )
         conn.commit(); cur.close(); conn.close()
-        ensure_table()
+        return True
     except Error as e:
-        print("Database creation error:", e)
+        print("[MYSQL] database setup skipped:", e)
         if conn:
             try: conn.close()
             except Exception: pass
+        return False
 
 def _execute_many(cur, statements):
     for sql in statements:
@@ -458,11 +462,13 @@ def ensure_table():
                 ON DUPLICATE KEY UPDATE camera_name=VALUES(camera_name), tcp_name=VALUES(tcp_name), direction_type=VALUES(direction_type)
             """, (cid, cname, tcp_name, direction))
         conn.commit(); cur.close(); conn.close()
+        return True
     except Error as e:
-        print("Table creation error:", e)
+        print("[MYSQL] table setup skipped:", e)
         if conn:
             try: conn.close()
             except Exception: pass
+        return False
 
 def _camera_tcp_info(camera_name):
     name = normalize_camera_name(camera_name)
