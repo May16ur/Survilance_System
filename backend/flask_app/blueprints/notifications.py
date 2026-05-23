@@ -18,6 +18,7 @@ bp = Blueprint("notifications", __name__)
 RECENT_EVENTS_FILE = os.path.join(RECEIVED_FOLDER, "recent_events.json")
 DUPLICATE_WINDOW_SEC = 3
 PLATE_DUPLICATE_WINDOW_SEC = int(os.getenv("CP_PLUS_DUPLICATE_PLATE_WINDOW_SEC", "300"))
+MAX_CAMERA_EVENT_AGE_SEC = int(os.getenv("CP_PLUS_MAX_EVENT_AGE_SEC", "120"))
 receiver_lock = threading.Lock()
 recent_receiver_events = deque(maxlen=200)
 recent_event_fingerprints = {}
@@ -53,6 +54,46 @@ def _plate_duplicate_key(normalized):
         str(normalized.get("camera_id") or ""),
         str(normalized.get("lane") or ""),
     ])
+
+
+def _event_label(normalized):
+    plate = str(normalized.get("plate_number") or normalized.get("license") or "UNKNOWN").strip().upper()
+    camera = normalized.get("camera_name") or normalized.get("camera_id") or "camera"
+    lane = normalized.get("lane") or ""
+    return f"plate={plate} camera={camera} lane={lane}"
+
+
+def _parse_camera_time(value):
+    if not value:
+        return None
+    if isinstance(value, datetime.datetime):
+        return value
+    text = str(value).strip()
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%Y-%m-%dT%H:%M:%S.%f",
+    ):
+        try:
+            return datetime.datetime.strptime(text, fmt)
+        except ValueError:
+            pass
+    return None
+
+
+def _stale_event_reason(normalized):
+    if MAX_CAMERA_EVENT_AGE_SEC <= 0:
+        return ""
+    camera_time = _parse_camera_time(normalized.get("time"))
+    if not camera_time:
+        return ""
+    age_sec = (datetime.datetime.now() - camera_time).total_seconds()
+    if age_sec > MAX_CAMERA_EVENT_AGE_SEC:
+        return f"camera event is {int(age_sec)}s old; max allowed is {MAX_CAMERA_EVENT_AGE_SEC}s"
+    if age_sec < -MAX_CAMERA_EVENT_AGE_SEC:
+        return f"camera event is {abs(int(age_sec))}s in the future; check camera clock"
+    return ""
 
 
 def _prune_duplicate_trackers(now):
@@ -200,6 +241,12 @@ def tollgate_notification():
     normalized = normalize_event(data)
     fingerprint = _event_fingerprint(data, normalized)
     plate_key = _plate_duplicate_key(normalized)
+    stale_reason = _stale_event_reason(normalized)
+    if stale_reason:
+        print(f"[CAMERA] stale event skipped: {_event_label(normalized)} reason={stale_reason}")
+        clear_api_cache()
+        return _camera_ok_response({"success": True, "message": "OK", "stale": True, "reason": stale_reason})
+
     now = time.time()
     with receiver_lock:
         _prune_duplicate_trackers(now)
@@ -207,6 +254,7 @@ def tollgate_notification():
         if previous and now - previous["time"] < DUPLICATE_WINDOW_SEC:
             previous["time"] = now
             previous["count"] += 1
+            print(f"[CAMERA] exact duplicate skipped: {_event_label(normalized)} count={previous['count']}")
             for event in recent_receiver_events:
                 if event.get("fingerprint") == fingerprint:
                     event["duplicate_count"] = previous["count"]
@@ -218,7 +266,7 @@ def tollgate_notification():
         if previous_plate and now - previous_plate["time"] < PLATE_DUPLICATE_WINDOW_SEC:
             previous_plate["time"] = now
             previous_plate["count"] += 1
-            print(f"[CAMERA] duplicate plate skipped: {plate_key} count={previous_plate['count']}")
+            print(f"[CAMERA] duplicate plate skipped: {_event_label(normalized)} count={previous_plate['count']}")
             clear_api_cache()
             return _camera_ok_response({"success": True, "message": "OK", "duplicate_plate": True})
         recent_event_fingerprints[fingerprint] = {"time": now, "count": 0}
@@ -285,6 +333,25 @@ def notification_keepalive():
         })
         return Response("OK", status=200, mimetype="text/plain")
     return jsonify({"success": True, "message": "OK"})
+
+
+@bp.route("/NotificationInfo/<path:interface_name>", methods=["POST", "GET"])
+def notification_unknown_interface(interface_name):
+    _log_receiver_hit(interface_name)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    data = _parse_camera_payload() if request.method == "POST" else {}
+    filename = f"{timestamp}_unknown_{secure_filename(interface_name) or 'notification'}.json"
+    _write_received_json(filename, {
+        "received_at": datetime.datetime.now().isoformat(),
+        "content_type": request.content_type,
+        "remote_addr": request.remote_addr,
+        "path": request.path,
+        "method": request.method,
+        "interface": interface_name,
+        "data": data,
+        "note": "Camera used an unregistered NotificationInfo interface. Configure ANPR to /NotificationInfo/TollgateInfo or add a parser for this interface.",
+    })
+    return Response("OK", status=200, mimetype="text/plain")
 
 
 @bp.route("/api/notifications/recent")
