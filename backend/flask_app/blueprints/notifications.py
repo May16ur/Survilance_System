@@ -17,9 +17,11 @@ bp = Blueprint("notifications", __name__)
 
 RECENT_EVENTS_FILE = os.path.join(RECEIVED_FOLDER, "recent_events.json")
 DUPLICATE_WINDOW_SEC = 3
+PLATE_DUPLICATE_WINDOW_SEC = int(os.getenv("CP_PLUS_DUPLICATE_PLATE_WINDOW_SEC", "300"))
 receiver_lock = threading.Lock()
 recent_receiver_events = deque(maxlen=200)
 recent_event_fingerprints = {}
+recent_plate_events = {}
 
 
 def _log_receiver_hit(name):
@@ -40,6 +42,33 @@ def _event_fingerprint(data, normalized):
     if raw.strip("|"):
         return hashlib.sha1(raw.encode("utf-8", errors="ignore")).hexdigest()
     return hashlib.sha1(json.dumps(data or {}, sort_keys=True, default=str).encode("utf-8", errors="ignore")).hexdigest()
+
+
+def _plate_duplicate_key(normalized):
+    plate = str(normalized.get("plate_number") or normalized.get("license") or "").strip().upper()
+    if not plate or plate in ("UNKNOWN", "UNRECOGNISE", "UNRECOGNIZED"):
+        return ""
+    return "|".join([
+        plate,
+        str(normalized.get("camera_id") or ""),
+        str(normalized.get("lane") or ""),
+    ])
+
+
+def _prune_duplicate_trackers(now):
+    stale_fingerprints = [
+        key for key, value in recent_event_fingerprints.items()
+        if now - value.get("time", 0) > max(DUPLICATE_WINDOW_SEC, PLATE_DUPLICATE_WINDOW_SEC)
+    ]
+    for key in stale_fingerprints:
+        recent_event_fingerprints.pop(key, None)
+
+    stale_plates = [
+        key for key, value in recent_plate_events.items()
+        if now - value.get("time", 0) > PLATE_DUPLICATE_WINDOW_SEC
+    ]
+    for key in stale_plates:
+        recent_plate_events.pop(key, None)
 
 
 def _save_recent_events_locked():
@@ -167,12 +196,13 @@ def tollgate_notification():
         "data": data,
         "files": [],
     }
-    _write_received_json(json_filename, event_data)
 
     normalized = normalize_event(data)
     fingerprint = _event_fingerprint(data, normalized)
+    plate_key = _plate_duplicate_key(normalized)
     now = time.time()
     with receiver_lock:
+        _prune_duplicate_trackers(now)
         previous = recent_event_fingerprints.get(fingerprint)
         if previous and now - previous["time"] < DUPLICATE_WINDOW_SEC:
             previous["time"] = now
@@ -184,7 +214,18 @@ def tollgate_notification():
                     break
             clear_api_cache()
             return _camera_ok_response({"success": True, "message": "OK", "duplicate": True})
+        previous_plate = recent_plate_events.get(plate_key) if plate_key else None
+        if previous_plate and now - previous_plate["time"] < PLATE_DUPLICATE_WINDOW_SEC:
+            previous_plate["time"] = now
+            previous_plate["count"] += 1
+            print(f"[CAMERA] duplicate plate skipped: {plate_key} count={previous_plate['count']}")
+            clear_api_cache()
+            return _camera_ok_response({"success": True, "message": "OK", "duplicate_plate": True})
         recent_event_fingerprints[fingerprint] = {"time": now, "count": 0}
+        if plate_key:
+            recent_plate_events[plate_key] = {"time": now, "count": 0}
+
+    _write_received_json(json_filename, event_data)
 
     veh_img, license_img, _image_bytes = decode_event_images(data, timestamp)
     normalized["veh_img"] = veh_img
@@ -195,7 +236,7 @@ def tollgate_notification():
     db_result = store_event_in_db(normalized)
     event_data["parsed"] = normalized
     event_data["db_result"] = db_result
-    event_data["event_file"] = ""
+    event_data["event_file"] = json_filename
     event_data["duplicate_count"] = 0
 
     for key in request.files:
@@ -249,12 +290,9 @@ def notification_keepalive():
 @bp.route("/api/notifications/recent")
 def api_recent_notifications():
     limit = max(1, min(request.args.get("limit", default=50, type=int), 200))
-    _load_recent_events()
-    if recent_receiver_events:
-        return jsonify({"success": True, "events": list(recent_receiver_events)[:limit]})
-
     files = sorted(
         [name for name in os.listdir(RECEIVED_FOLDER) if name.endswith("_event.json")],
+        key=lambda name: os.path.getmtime(os.path.join(RECEIVED_FOLDER, name)),
         reverse=True,
     )[:limit]
 
@@ -265,6 +303,7 @@ def api_recent_notifications():
             with open(path, "r", encoding="utf-8") as event_file:
                 event = json.load(event_file)
             event["event_file"] = filename
+            event["saved_at"] = datetime.datetime.fromtimestamp(os.path.getmtime(path)).isoformat()
             parsed = event.get("parsed")
             if not parsed:
                 parsed = normalize_event(event.get("data") or {}, event_file=filename)
