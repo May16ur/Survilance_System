@@ -16,7 +16,6 @@ from flask_app.blueprints.route_utils import (
     UPLOAD_FOLDER,
     RTSP_PIPELINE_ERROR,
     VIDEO_PIPELINE_ERROR,
-    start_rtsp_streams,
     start_rtsp_camera,
     generate_frames,
     get_latest_frame_jpeg,
@@ -65,9 +64,10 @@ def start_streams():
     data = request.get_json(silent=True) or {}
     urls = data.get("urls", [])
     register_preview_urls(urls)
-    if RTSP_PIPELINE_ERROR is None:
-        start_rtsp_streams(urls)
-    return jsonify({"success": True, "message": "RTSP preview URLs registered. Live preview does not use YOLO."})
+    return jsonify({
+        "success": True,
+        "message": "RTSP preview URLs registered. No background YOLO processing was started.",
+    })
 
 
 @bp.route("/start_camera", methods=["POST"])
