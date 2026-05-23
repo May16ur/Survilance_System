@@ -13,12 +13,12 @@ python -m pip install -r requirements.txt
 python app.py
 ```
 
-Backend defaults to `http://127.0.0.1:7070`.
+Backend defaults to `http://192.168.2.146:7073`.
 
 For the CP Plus camera screen, set Platform Server to:
 
 ```text
-http://CLIENT_MACHINE_IP:7070
+http://192.168.2.146:7073
 ```
 
 The backend accepts:

@@ -1,6 +1,10 @@
 import datetime
+import hashlib
 import json
 import os
+import threading
+import time
+from collections import deque
 
 from flask import Blueprint, Response, jsonify, request
 from werkzeug.utils import secure_filename
@@ -10,6 +14,85 @@ from flask_app.services.cp_plus import decode_event_images, normalize_event, sto
 from flask_app.services.cp_plus import ANPR_IMAGE_FOLDER
 
 bp = Blueprint("notifications", __name__)
+RECEIVER_ACCESS_LOG = os.path.join(RECEIVED_FOLDER, "receiver_access.log")
+RECEIVER_EVENTS_FILE = os.path.join(RECEIVED_FOLDER, "receiver_events.json")
+SAVE_RAW_RECEIVED_EVENTS = os.getenv("SAVE_RAW_RECEIVED_EVENTS", "0").strip().lower() in ("1", "true", "yes", "on")
+DUPLICATE_WINDOW_SEC = max(1, int(os.getenv("RECEIVER_DUPLICATE_WINDOW_SEC", "30")))
+recent_receiver_events = deque(maxlen=200)
+recent_event_fingerprints = {}
+receiver_lock = threading.Lock()
+
+
+def _log_receiver_hit(name):
+    os.makedirs(RECEIVED_FOLDER, exist_ok=True)
+    line = (
+        f"{datetime.datetime.now().isoformat()} "
+        f"{name} method={request.method} path={request.full_path} "
+        f"remote={request.remote_addr} content_type={request.content_type}\n"
+    )
+    with open(RECEIVER_ACCESS_LOG, "a", encoding="utf-8") as log_file:
+        log_file.write(line)
+    print("[RECEIVER]", line.strip())
+
+
+def _event_fingerprint(data, normalized):
+    picture = (data or {}).get("Picture") or {}
+    snap = picture.get("SnapInfo") or {}
+    plate = picture.get("Plate") or {}
+    normal_pic = picture.get("NormalPic") or {}
+    cutout_pic = picture.get("CutoutPic") or {}
+    parts = [
+        str(normalized.get("camera_id") or ""),
+        str(normalized.get("license") or ""),
+        str(normalized.get("time") or ""),
+        str(snap.get("DeviceID") or ""),
+        str(snap.get("LanNo") or ""),
+        str(plate.get("UploadNum") or ""),
+        str(normal_pic.get("PicName") or ""),
+        str(cutout_pic.get("PicName") or ""),
+    ]
+    if not any(parts[1:]):
+        parts.append(hashlib.sha1(json.dumps(data, sort_keys=True, default=str).encode("utf-8")).hexdigest())
+    return hashlib.sha1("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def _remember_event(event_data, fingerprint):
+    compact_event = {
+        "event_file": event_data.get("event_file", ""),
+        "received_at": event_data.get("received_at"),
+        "content_type": event_data.get("content_type"),
+        "parsed": event_data.get("parsed") or {},
+        "db_result": event_data.get("db_result") or {},
+        "duplicate_count": event_data.get("duplicate_count", 0),
+        "fingerprint": fingerprint,
+    }
+    with receiver_lock:
+        for index, existing in enumerate(recent_receiver_events):
+            if existing.get("fingerprint") == fingerprint:
+                recent_receiver_events[index] = compact_event
+                break
+        else:
+            recent_receiver_events.appendleft(compact_event)
+        _save_recent_events_locked()
+
+
+def _save_recent_events_locked():
+    os.makedirs(RECEIVED_FOLDER, exist_ok=True)
+    with open(RECEIVER_EVENTS_FILE, "w", encoding="utf-8") as events_file:
+        json.dump(list(recent_receiver_events), events_file, indent=2, ensure_ascii=False)
+
+
+def _load_recent_events():
+    if recent_receiver_events or not os.path.exists(RECEIVER_EVENTS_FILE):
+        return
+    try:
+        with open(RECEIVER_EVENTS_FILE, "r", encoding="utf-8") as events_file:
+            rows = json.load(events_file)
+        if isinstance(rows, list):
+            for row in rows[:200]:
+                recent_receiver_events.append(row)
+    except Exception:
+        pass
 
 def _assign_nested(target, dotted_key, value):
     parts = [part for part in str(dotted_key).replace("[", ".").replace("]", "").split(".") if part]
@@ -86,6 +169,7 @@ def _camera_ok_response(api_payload):
 @bp.route("/NotificationInfo/TollgateInfo", methods=["POST"])
 @bp.route("/api/notifications/tollgate", methods=["POST"])
 def tollgate_notification():
+    _log_receiver_hit("TollgateInfo")
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
     data = _parse_camera_payload()
@@ -98,15 +182,33 @@ def tollgate_notification():
     }
 
     normalized = normalize_event(data)
+    fingerprint = _event_fingerprint(data, normalized)
+    now = time.time()
+    with receiver_lock:
+        previous = recent_event_fingerprints.get(fingerprint)
+        if previous and now - previous["time"] < DUPLICATE_WINDOW_SEC:
+            previous["time"] = now
+            previous["count"] += 1
+            for event in recent_receiver_events:
+                if event.get("fingerprint") == fingerprint:
+                    event["duplicate_count"] = previous["count"]
+                    _save_recent_events_locked()
+                    break
+            clear_api_cache()
+            return _camera_ok_response({"success": True, "message": "OK", "duplicate": True})
+        recent_event_fingerprints[fingerprint] = {"time": now, "count": 0}
+
     veh_img, license_img, _image_bytes = decode_event_images(data, timestamp)
     normalized["veh_img"] = veh_img
     normalized["vehicle"] = veh_img
     normalized["license_img"] = license_img
     normalized["plate"] = license_img
-    normalized["event_file"] = f"{timestamp}_event.json"
+    normalized["event_file"] = ""
     db_result = store_event_in_db(normalized)
     event_data["parsed"] = normalized
     event_data["db_result"] = db_result
+    event_data["event_file"] = ""
+    event_data["duplicate_count"] = 0
 
     for key in request.files:
         for file in request.files.getlist(key):
@@ -124,11 +226,16 @@ def tollgate_notification():
         event_data["parsed"] = normalized
         event_data["db_result"] = db_result
 
-    json_filename = f"{timestamp}_event.json"
-    json_filepath = os.path.join(RECEIVED_FOLDER, json_filename)
-    with open(json_filepath, "w", encoding="utf-8") as json_file:
-        json.dump(event_data, json_file, indent=4, ensure_ascii=False)
+    json_filename = ""
+    if SAVE_RAW_RECEIVED_EVENTS:
+        json_filename = f"{timestamp}_event.json"
+        json_filepath = os.path.join(RECEIVED_FOLDER, json_filename)
+        with open(json_filepath, "w", encoding="utf-8") as json_file:
+            json.dump(event_data, json_file, indent=4, ensure_ascii=False)
+        event_data["event_file"] = json_filename
+        normalized["event_file"] = json_filename
 
+    _remember_event(event_data, fingerprint)
     clear_api_cache()
 
     return _camera_ok_response({
@@ -140,9 +247,10 @@ def tollgate_notification():
     })
 
 
-@bp.route("/NotificationInfo/KeepAlive", methods=["POST"])
+@bp.route("/NotificationInfo/KeepAlive", methods=["POST", "GET"])
 @bp.route("/api/notifications/keepalive", methods=["POST", "GET"])
 def notification_keepalive():
+    _log_receiver_hit("KeepAlive")
     if request.path.startswith("/NotificationInfo/"):
         return Response("OK", status=200, mimetype="text/plain")
     return jsonify({"success": True, "message": "OK"})
@@ -151,6 +259,10 @@ def notification_keepalive():
 @bp.route("/api/notifications/recent")
 def api_recent_notifications():
     limit = max(1, min(request.args.get("limit", default=50, type=int), 200))
+    _load_recent_events()
+    if recent_receiver_events:
+        return jsonify({"success": True, "events": list(recent_receiver_events)[:limit]})
+
     files = sorted(
         [name for name in os.listdir(RECEIVED_FOLDER) if name.endswith("_event.json")],
         reverse=True,

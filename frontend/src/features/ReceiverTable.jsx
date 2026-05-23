@@ -12,7 +12,7 @@ export function ReceiverTable({ events }) {
           {(events || []).map((event) => {
             const row = event.parsed || {};
             return (
-              <tr key={event.event_file}>
+              <tr key={event.event_file || event.fingerprint || `${row.camera_id}-${row.time}-${row.license}`}>
                 <td>{row.plate_number || row.license || "UNKNOWN"}</td>
                 <td>{row.unit || ""}</td>
                 <td>{row.plate_confidence ?? ""}</td>

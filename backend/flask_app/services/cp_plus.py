@@ -2,6 +2,7 @@ import base64
 import datetime
 import json
 import os
+import re
 
 import cv2
 import numpy as np
@@ -21,6 +22,11 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 ANPR_IMAGE_FOLDER = os.path.join(BASE_DIR, "flask_app", "static", "anpr")
 os.makedirs(ANPR_IMAGE_FOLDER, exist_ok=True)
 
+DEFAULT_CP_PLUS_CAMERA_MAP = {
+    "192.168.2.110": 3,
+    "192.168.2.116": 4,
+}
+
 
 def safe_int(value, default=0):
     try:
@@ -39,13 +45,13 @@ def camera_from_event(data):
     snap = picture.get("SnapInfo") or {}
     plate = picture.get("Plate") or {}
 
-    mapping = {}
+    mapping = DEFAULT_CP_PLUS_CAMERA_MAP.copy()
     mapping_raw = os.getenv("CP_PLUS_CAMERA_MAP", "").strip()
     if mapping_raw:
         try:
-            mapping = json.loads(mapping_raw)
+            mapping.update(json.loads(mapping_raw))
         except Exception:
-            mapping = {}
+            pass
 
     keys = [
         str(snap.get("DeviceID") or ""),
@@ -82,37 +88,54 @@ def decode_event_images(data, timestamp):
     CP Plus may concatenate two JPEGs in VehiclePic.Content:
     first = vehicle image, second = clean plate crop.
     """
-    content = (((data or {}).get("Picture") or {}).get("VehiclePic") or {}).get("Content", "")
-    if not content:
-        return "", "", None
-
-    if "," in content[:80]:
-        content = content.split(",", 1)[1]
-
-    try:
-        image_bytes = base64.b64decode(content, validate=False)
-    except Exception:
-        return "", "", None
-
     date_folder = datetime.datetime.now().strftime("%Y%m%d")
     image_dir = os.path.join(ANPR_IMAGE_FOLDER, date_folder)
     os.makedirs(image_dir, exist_ok=True)
 
-    starts = _jpeg_start_positions(image_bytes)
-    vehicle_bytes = image_bytes[starts[0]:] if starts else image_bytes
+    picture = (data or {}).get("Picture") or {}
+    vehicle_content = (
+        (picture.get("VehiclePic") or {}).get("Content")
+        or (picture.get("NormalPic") or {}).get("Content")
+        or ""
+    )
+    plate_content = (picture.get("CutoutPic") or {}).get("Content") or ""
+    if not vehicle_content and not plate_content:
+        return "", "", None
 
-    vehicle_filename = f"{timestamp}_vehicle.jpg"
-    with open(os.path.join(image_dir, vehicle_filename), "wb") as image_file:
-        image_file.write(vehicle_bytes)
-    vehicle_rel = f"/static/anpr/{date_folder}/{vehicle_filename}"
+    vehicle_bytes = _decode_base64_image(vehicle_content)
+    plate_bytes = _decode_base64_image(plate_content)
+    image_bytes = vehicle_bytes or plate_bytes
 
-    if len(starts) > 1:
+    vehicle_rel = ""
+    if vehicle_bytes:
+        starts = _jpeg_start_positions(vehicle_bytes)
+        clean_vehicle_bytes = vehicle_bytes[starts[0]:] if starts else vehicle_bytes
+        vehicle_filename = f"{timestamp}_vehicle.jpg"
+        with open(os.path.join(image_dir, vehicle_filename), "wb") as image_file:
+            image_file.write(clean_vehicle_bytes)
+        vehicle_rel = f"/static/anpr/{date_folder}/{vehicle_filename}"
+
+        if len(starts) > 1 and not plate_bytes:
+            plate_bytes = vehicle_bytes[starts[1]:]
+
+    if plate_bytes:
         plate_filename = f"{timestamp}_plate.jpg"
         with open(os.path.join(image_dir, plate_filename), "wb") as plate_file:
-            plate_file.write(image_bytes[starts[1]:])
+            plate_file.write(plate_bytes)
         return vehicle_rel, f"/static/anpr/{date_folder}/{plate_filename}", image_bytes
 
     return vehicle_rel, _crop_plate_from_box(data, image_bytes, image_dir, date_folder, timestamp), image_bytes
+
+
+def _decode_base64_image(content):
+    if not content:
+        return None
+    if "," in content[:80]:
+        content = content.split(",", 1)[1]
+    try:
+        return base64.b64decode(content, validate=False)
+    except Exception:
+        return None
 
 
 def _crop_plate_from_box(data, image_bytes, image_dir, date_folder, timestamp):
@@ -144,9 +167,15 @@ def normalize_event(data, event_file=None):
     plate = picture.get("Plate") or {}
     vehicle = picture.get("Vehicle") or {}
     snap = picture.get("SnapInfo") or {}
+    normal_pic = picture.get("NormalPic") or {}
+    cutout_pic = picture.get("CutoutPic") or {}
     camera_id, camera_name = camera_from_event(data or {})
 
-    plate_number = str(plate.get("PlateNumber") or "").strip().upper()
+    plate_number = str(
+        plate.get("PlateNumber")
+        or _find_text_in_picture_headers(picture, ["UnRecognise", "Unknown"])
+        or ""
+    ).strip().upper()
     snap_time = snap.get("SnapTime") or snap.get("AccurateTime") or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     class_id, class_name, class_reason = classify_vehicle_from_anpr(
         plate_number,
@@ -185,11 +214,24 @@ def normalize_event(data, event_file=None):
         "device_id": snap.get("DeviceID") or "",
         "lane": snap.get("LanNo"),
         "channel": plate.get("Channel"),
+        "normal_pic_name": normal_pic.get("PicName") or "",
+        "cutout_pic_name": cutout_pic.get("PicName") or "",
         "direction": "South to North",
         "license_img": "",
         "veh_img": "",
-        "is_detection_event": bool(picture and (plate_number or vehicle.get("VehicleType") or vehicle.get("VehicleColor") or snap.get("SnapTime"))),
+        "is_detection_event": bool(picture),
     }
+
+
+def _find_text_in_picture_headers(picture, ignored_values):
+    """Some CP Plus payloads place text in the binary-like image header, not Plate."""
+    ignored = {str(value).upper() for value in ignored_values}
+    for key in ("NormalPic", "CutoutPic"):
+        content = str(((picture or {}).get(key) or {}).get("Content") or "")
+        for match in re.findall(r"[A-Z]{1,3}[0-9]{1,4}[A-Z]{0,3}[0-9]{0,4}", content.upper()):
+            if match not in ignored and len(match) >= 5:
+                return match
+    return ""
 
 
 def store_event_in_db(normalized):
