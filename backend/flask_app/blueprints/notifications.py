@@ -1,6 +1,10 @@
 import datetime
+import hashlib
 import json
 import os
+import threading
+import time
+from collections import deque
 
 from flask import Blueprint, Response, jsonify, request
 from werkzeug.utils import secure_filename
@@ -95,6 +99,7 @@ def _camera_ok_response(api_payload):
 @bp.route("/NotificationInfo/TollgateInfo", methods=["POST"])
 @bp.route("/api/notifications/tollgate", methods=["POST"])
 def tollgate_notification():
+    _log_receiver_hit("TollgateInfo")
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     json_filename = f"{timestamp}_event.json"
 
@@ -112,6 +117,22 @@ def tollgate_notification():
     _write_received_json(json_filename, event_data)
 
     normalized = normalize_event(data)
+    fingerprint = _event_fingerprint(data, normalized)
+    now = time.time()
+    with receiver_lock:
+        previous = recent_event_fingerprints.get(fingerprint)
+        if previous and now - previous["time"] < DUPLICATE_WINDOW_SEC:
+            previous["time"] = now
+            previous["count"] += 1
+            for event in recent_receiver_events:
+                if event.get("fingerprint") == fingerprint:
+                    event["duplicate_count"] = previous["count"]
+                    _save_recent_events_locked()
+                    break
+            clear_api_cache()
+            return _camera_ok_response({"success": True, "message": "OK", "duplicate": True})
+        recent_event_fingerprints[fingerprint] = {"time": now, "count": 0}
+
     veh_img, license_img, _image_bytes = decode_event_images(data, timestamp)
     normalized["veh_img"] = veh_img
     normalized["vehicle"] = veh_img
@@ -121,6 +142,8 @@ def tollgate_notification():
     db_result = store_event_in_db(normalized)
     event_data["parsed"] = normalized
     event_data["db_result"] = db_result
+    event_data["event_file"] = ""
+    event_data["duplicate_count"] = 0
 
     for key in request.files:
         for file in request.files.getlist(key):
@@ -140,6 +163,7 @@ def tollgate_notification():
 
     _write_received_json(json_filename, event_data)
 
+    _remember_event(event_data, fingerprint)
     clear_api_cache()
 
     return _camera_ok_response({
@@ -151,9 +175,10 @@ def tollgate_notification():
     })
 
 
-@bp.route("/NotificationInfo/KeepAlive", methods=["POST"])
+@bp.route("/NotificationInfo/KeepAlive", methods=["POST", "GET"])
 @bp.route("/api/notifications/keepalive", methods=["POST", "GET"])
 def notification_keepalive():
+    _log_receiver_hit("KeepAlive")
     if request.path.startswith("/NotificationInfo/"):
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         _write_received_json(f"{timestamp}_keepalive.json", {
@@ -171,6 +196,10 @@ def notification_keepalive():
 @bp.route("/api/notifications/recent")
 def api_recent_notifications():
     limit = max(1, min(request.args.get("limit", default=50, type=int), 200))
+    _load_recent_events()
+    if recent_receiver_events:
+        return jsonify({"success": True, "events": list(recent_receiver_events)[:limit]})
+
     files = sorted(
         [name for name in os.listdir(RECEIVED_FOLDER) if name.endswith("_event.json")],
         reverse=True,

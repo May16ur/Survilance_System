@@ -15,12 +15,21 @@ python -m pip install -r requirements.txt
 python app.py
 ```
 
-Backend currently defaults from `.env` to `http://127.0.0.1:7072`.
+Backend host and port come from `.env`. For the client camera setup, use:
+
+```text
+BACKEND_HOST=0.0.0.0
+BACKEND_PORT=7073
+BACKEND_PUBLIC_URL=http://192.168.2.146:7073
+VITE_BACKEND_URL=http://192.168.2.146:7073
+```
+
+`0.0.0.0` makes Flask listen on the client machine network card. The camera should still be configured with the machine LAN IP, not `0.0.0.0`.
 
 For the CP Plus camera screen, set Platform Server to:
 
 ```text
-http://CLIENT_MACHINE_IP:7070
+http://192.168.2.146:7073
 ```
 
 The backend accepts:

@@ -36,19 +36,25 @@ if __name__ == "__main__":
     else:
         print("[APP] MySQL is offline. Backend will still start; DB-backed pages stay empty until MySQL is available.")
 
-    # Preload PaddleOCR at startup so the first detected vehicle does not freeze the stream.
-    try:
-        print("[APP] Preloading PaddleOCR...")
-        if get_paddle_ocr is None:
-            print("[APP] PaddleOCR preload skipped:", OCR_PRELOAD_ERROR)
-        else:
-            get_paddle_ocr()
-            print("[APP] PaddleOCR ready.")
-    except Exception as e:
-        print("[APP] PaddleOCR preload skipped:", e)
+    if os.getenv("ETCP_PRELOAD_OCR", "0").strip().lower() in ("1", "true", "yes", "on"):
+        try:
+            print("[APP] Preloading PaddleOCR...")
+            if get_paddle_ocr is None:
+                print("[APP] PaddleOCR preload skipped:", OCR_PRELOAD_ERROR)
+            else:
+                get_paddle_ocr()
+                print("[APP] PaddleOCR ready.")
+        except Exception as e:
+            print("[APP] PaddleOCR preload skipped:", e)
+    else:
+        print("[APP] PaddleOCR preload disabled. Set ETCP_PRELOAD_OCR=1 to enable it.")
 
-    host = os.getenv("BACKEND_HOST", "0.0.0.0")
-    port = int(os.getenv("BACKEND_PORT", "7070"))
+    host = os.getenv("BACKEND_HOST", os.getenv("APP_HOST", "0.0.0.0"))
+    port = int(os.getenv("BACKEND_PORT", os.getenv("APP_PORT", "7073")))
 
-    print(f"e-TCP API running on http://127.0.0.1:{port}")
+    public_url = os.getenv("BACKEND_PUBLIC_URL", "").strip()
+    display_host = "127.0.0.1" if host == "0.0.0.0" else host
+    print(f"e-TCP API listening on http://{display_host}:{port}")
+    if public_url:
+        print(f"e-TCP camera/client URL: {public_url}")
     serve(app, host=host, port=port, threads=64, connection_limit=1000, channel_timeout=120)

@@ -16,6 +16,8 @@ import { ReceiverTable } from "./features/ReceiverTable.jsx";
 import { MapPanel } from "./features/MapPanel.jsx";
 import "./styles.css";
 
+const ACTIVE_CAMERA_IDS = new Set(DEFAULT_CAMERAS.map((camera) => camera.id));
+
 // App keeps page state and API actions; tab screens live in src/features.
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -80,7 +82,7 @@ function App() {
       const data = await getJson("/api/health");
       setStatus(data.success ? "Backend online" : "Backend unavailable");
     } catch {
-      setStatus("Backend offline. Start Flask on port 7070.");
+      setStatus("Backend offline. Start Flask on http://192.168.2.146:7073.");
     }
   }
 
@@ -89,10 +91,12 @@ function App() {
       const data = await getJson("/api/cameras");
       if (!data.success) return;
       setCameras((current) =>
-        data.cameras.map((camera) => ({
-          ...camera,
-          url: current.find((item) => item.id === camera.id)?.url || "",
-        }))
+        data.cameras
+          .filter((camera) => ACTIVE_CAMERA_IDS.has(camera.id))
+          .map((camera) => ({
+            ...camera,
+            url: current.find((item) => item.id === camera.id)?.url || "",
+          }))
       );
     } catch {
       setCameras(DEFAULT_CAMERAS);

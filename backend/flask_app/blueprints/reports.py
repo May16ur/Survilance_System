@@ -1,11 +1,6 @@
 from io import BytesIO
 
 from flask import Blueprint, jsonify, request, send_file
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import landscape, A3
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 from core.common import CAMERA_NAME_MAP, get_last_7_days_report_rows
 from flask_app.blueprints.route_utils import cache_get, cache_set
@@ -42,6 +37,15 @@ def api_last_7_days_report():
 
 
 def _build_report_pdf(rows, vehicle_type, camera_name):
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import landscape, A3
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    except Exception as e:
+        raise RuntimeError(f"PDF report generation is unavailable: {e}") from e
+
     buffer = BytesIO()
 
     doc = SimpleDocTemplate(
@@ -155,7 +159,10 @@ def download_last_7_days_report():
         limit=int(request.args.get("limit", 2000)),
     )
 
-    pdf_buffer = _build_report_pdf(rows, vehicle_type, camera_name)
+    try:
+        pdf_buffer = _build_report_pdf(rows, vehicle_type, camera_name)
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 503
 
     return send_file(
         pdf_buffer,

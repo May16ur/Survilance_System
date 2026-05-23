@@ -8,6 +8,7 @@ from preview_pipeline import (
     register_preview_urls,
     start_preview_camera,
     stop_preview_camera,
+    get_preview_logs,
     get_preview_snapshot,
     generate_preview_frames,
 )
@@ -101,6 +102,15 @@ def preview_stop_camera():
         return jsonify({"success": False, "message": "Invalid camera id."}), 400
     stop_preview_camera(camera_id)
     return jsonify({"success": True, "message": f"Camera {camera_id} preview stopped."})
+
+
+@bp.route("/api/preview_logs")
+def api_preview_logs():
+    camera_id = request.args.get("camera_id", type=int)
+    limit = request.args.get("limit", default=100, type=int)
+    if camera_id is not None and camera_id not in CAMERA_NAME_MAP:
+        return jsonify({"success": False, "logs": [], "message": "Invalid camera id"}), 400
+    return jsonify({"success": True, "logs": get_preview_logs(limit=limit, camera_id=camera_id)})
 
 
 @bp.route("/yolo/start_camera", methods=["POST"])
