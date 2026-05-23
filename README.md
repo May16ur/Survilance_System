@@ -13,7 +13,20 @@ python -m pip install -r requirements.txt
 python app.py
 ```
 
-Backend defaults to `http://127.0.0.1:5000`.
+Backend defaults to `http://127.0.0.1:7070`.
+
+For the CP Plus camera screen, set Platform Server to:
+
+```text
+http://CLIENT_MACHINE_IP:7070
+```
+
+The backend accepts:
+
+- `POST /NotificationInfo/TollgateInfo`
+- `POST /NotificationInfo/KeepAlive`
+
+The camera-facing endpoints return plain `OK` because the camera has `Need Response = Yes`.
 
 If you use the old conda setup, run the backend from that environment:
 

@@ -1,23 +1,25 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+const backend = process.env.VITE_BACKEND_URL || "http://127.0.0.1:7070";
+
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
     proxy: {
-      "/api": "http://127.0.0.1:5000",
-      "/dashboard_full": "http://127.0.0.1:5000",
-      "/upload_video": "http://127.0.0.1:5000",
-      "/video_feed": "http://127.0.0.1:5000",
-      "/start_streams": "http://127.0.0.1:5000",
-      "/start_camera": "http://127.0.0.1:5000",
-      "/camera_snapshot": "http://127.0.0.1:5000",
-      "/camera_feed": "http://127.0.0.1:5000",
-      "/save_logs": "http://127.0.0.1:5000",
-      "/download_last_7_days_report": "http://127.0.0.1:5000",
-      "/NotificationInfo": "http://127.0.0.1:5000",
-      "/static": "http://127.0.0.1:5000"
+      "/api": backend,
+      "/dashboard_full": backend,
+      "/upload_video": backend,
+      "/video_feed": backend,
+      "/start_streams": backend,
+      "/start_camera": backend,
+      "/camera_snapshot": backend,
+      "/camera_feed": backend,
+      "/save_logs": backend,
+      "/download_last_7_days_report": backend,
+      "/NotificationInfo": backend,
+      "/static": backend
     }
   }
 });

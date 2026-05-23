@@ -80,7 +80,7 @@ function App() {
       const data = await getJson("/api/health");
       setStatus(data.success ? "Backend online" : "Backend unavailable");
     } catch {
-      setStatus("Backend offline. Start Flask on port 5000.");
+      setStatus("Backend offline. Start Flask on port 7070.");
     }
   }
 

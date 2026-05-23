@@ -40,8 +40,8 @@ if __name__ == "__main__":
     except Exception as e:
         print("[APP] PaddleOCR preload skipped:", e)
 
-    host ="192.168.1.50"
-    port = "7070"
+    host = os.getenv("BACKEND_HOST", "0.0.0.0")
+    port = int(os.getenv("BACKEND_PORT", "7070"))
 
-    print(f"e-TCP API running on http://192.168.1.50:{port}")
+    print(f"e-TCP API running on http://127.0.0.1:{port}")
     serve(app, host=host, port=port, threads=64, connection_limit=1000, channel_timeout=120)
