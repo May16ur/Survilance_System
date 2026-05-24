@@ -16,17 +16,12 @@ from core.common import (
     get_vehicle_master_info,
     insert_vehicle_log_event,
 )
+from project_config import get_cp_plus_camera_map
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ANPR_IMAGE_FOLDER = os.path.join(BASE_DIR, "flask_app", "static", "anpr")
 os.makedirs(ANPR_IMAGE_FOLDER, exist_ok=True)
-
-DEFAULT_CP_PLUS_CAMERA_MAP = {
-    "192.168.2.110": 3,
-    "192.168.2.116": 4,
-}
-
 
 def safe_int(value, default=0):
     try:
@@ -51,7 +46,7 @@ def camera_from_event(data):
     snap = picture.get("SnapInfo") or {}
     plate = picture.get("Plate") or {}
 
-    mapping = DEFAULT_CP_PLUS_CAMERA_MAP.copy()
+    mapping = get_cp_plus_camera_map()
     mapping_raw = os.getenv("CP_PLUS_CAMERA_MAP", "").strip()
     if mapping_raw:
         try:

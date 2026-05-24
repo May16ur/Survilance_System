@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Activity, RefreshCw } from "lucide-react";
 import { getJson } from "./lib/api.js";
-import { DEFAULT_CAMERAS, TABS } from "./lib/constants.js";
+import { DEFAULT_CAMERAS, TCP_OPTIONS, TABS } from "./lib/constants.js";
 import { Metric } from "./components/Metric.jsx";
 import { DashboardPanel } from "./features/DashboardPanel.jsx";
 import { StreamsPanel } from "./features/StreamsPanel.jsx";
@@ -16,13 +16,13 @@ import { ReceiverTable } from "./features/ReceiverTable.jsx";
 import { MapPanel } from "./features/MapPanel.jsx";
 import "./styles.css";
 
-const ACTIVE_CAMERA_IDS = new Set(DEFAULT_CAMERAS.map((camera) => camera.id));
-
 // App keeps page state and API actions; tab screens live in src/features.
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [status, setStatus] = useState("Connecting to backend...");
   const [cameras, setCameras] = useState(DEFAULT_CAMERAS);
+  const [tcpOptions, setTcpOptions] = useState(TCP_OPTIONS.map((key) => ({ key, label: key.toUpperCase() })));
+  const [backendUrl, setBackendUrl] = useState("http://192.168.2.146:7073");
   const [cameraStats, setCameraStats] = useState({});
   const [running, setRunning] = useState({});
   const [uploadLogs, setUploadLogs] = useState([]);
@@ -47,13 +47,12 @@ function App() {
   const uploadRef = useRef(null);
 
   useEffect(() => {
+    loadAppConfig();
     refreshHealth();
-    loadCameras();
     refreshCounters();
     refreshNotifications();
     refreshBlacklist();
     loadDashboard();
-    loadTcpReport("kiari");
     loadVehicleMaster();
   }, []);
 
@@ -82,7 +81,42 @@ function App() {
       const data = await getJson("/api/health");
       setStatus(data.success ? "Backend online" : "Backend unavailable");
     } catch {
-      setStatus("Backend offline. Start Flask on http://192.168.2.146:7073.");
+      setStatus(`Backend offline. Start Flask on ${backendUrl}.`);
+    }
+  }
+
+  async function loadAppConfig() {
+    try {
+      const data = await getJson("/api/app_config");
+      const config = data.config || {};
+      const configuredCameras = (config.cameras || []).map((camera) => ({
+        id: camera.id,
+        name: camera.name,
+        url: camera.rtsp_url || "",
+        tcp: camera.tcp || "",
+        direction: camera.direction || "",
+      }));
+      if (configuredCameras.length) {
+        setCameras(configuredCameras);
+        setSelectedCamera(configuredCameras[0].id);
+      } else {
+        loadCameras();
+      }
+      const pairs = (config.tcp_pairs || []).map((pair) => ({
+        key: pair.key,
+        label: pair.label || String(pair.key || "").toUpperCase(),
+      }));
+      if (pairs.length) {
+        setTcpOptions(pairs);
+        setTcpName(pairs[0].key);
+        loadTcpReport(pairs[0].key);
+      }
+      if (config.server?.public_url) {
+        setBackendUrl(config.server.public_url);
+      }
+    } catch {
+      loadCameras();
+      loadTcpReport("kiari");
     }
   }
 
@@ -90,9 +124,10 @@ function App() {
     try {
       const data = await getJson("/api/cameras");
       if (!data.success) return;
+      const activeIds = new Set(DEFAULT_CAMERAS.map((camera) => camera.id));
       setCameras((current) =>
         data.cameras
-          .filter((camera) => ACTIVE_CAMERA_IDS.has(camera.id))
+          .filter((camera) => activeIds.has(camera.id))
           .map((camera) => ({
             ...camera,
             url: current.find((item) => item.id === camera.id)?.url || "",
@@ -465,6 +500,7 @@ function App() {
         {activeTab === "tcp" && (
           <TcpPanel
             tcpName={tcpName}
+            tcpOptions={tcpOptions}
             tcpReport={tcpReport}
             remaining={remaining}
             loadTcpReport={loadTcpReport}

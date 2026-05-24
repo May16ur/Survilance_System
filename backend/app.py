@@ -13,6 +13,7 @@ from waitress import serve
 from flask_cors import CORS
 from flask_app import create_app
 from core.common import check_mysql_connection, ensure_database, ensure_table, import_vehicle_details_from_excel
+from project_config import get_server_config
 
 try:
     from core.license_utils import get_paddle_ocr
@@ -49,10 +50,11 @@ if __name__ == "__main__":
     else:
         print("[APP] PaddleOCR preload disabled. Set ETCP_PRELOAD_OCR=1 to enable it.")
 
-    host = os.getenv("BACKEND_HOST", os.getenv("APP_HOST", "0.0.0.0"))
-    port = int(os.getenv("BACKEND_PORT", os.getenv("APP_PORT", "7073")))
+    server_config = get_server_config()
+    host = str(server_config.get("host") or os.getenv("BACKEND_HOST") or os.getenv("APP_HOST") or "0.0.0.0")
+    port = int(server_config.get("port") or os.getenv("BACKEND_PORT") or os.getenv("APP_PORT") or "7073")
 
-    public_url = os.getenv("BACKEND_PUBLIC_URL", "").strip()
+    public_url = str(server_config.get("public_url") or os.getenv("BACKEND_PUBLIC_URL") or "").strip()
     display_host = "127.0.0.1" if host == "0.0.0.0" else host
     print(f"e-TCP API listening on http://{display_host}:{port}")
     if public_url:

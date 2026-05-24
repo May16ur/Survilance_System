@@ -1,14 +1,13 @@
 import { RefreshCw } from "lucide-react";
 import { Metric } from "../components/Metric.jsx";
 import { SimpleTable, TcpTable } from "../components/Tables.jsx";
-import { TCP_OPTIONS } from "../lib/constants.js";
 
-export function TcpPanel({ tcpName, tcpReport, remaining, loadTcpReport }) {
+export function TcpPanel({ tcpName, tcpOptions, tcpReport, remaining, loadTcpReport }) {
   return (
     <section className="panel stack">
       <div className="panel-toolbar">
         <select value={tcpName} onChange={(e) => loadTcpReport(e.target.value)}>
-          {TCP_OPTIONS.map((name) => <option key={name} value={name}>{name.toUpperCase()}</option>)}
+          {(tcpOptions || []).map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
         </select>
         <button onClick={() => loadTcpReport(tcpName)}><RefreshCw size={17} /> Refresh</button>
       </div>

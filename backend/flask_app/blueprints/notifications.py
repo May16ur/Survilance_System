@@ -147,6 +147,20 @@ def _write_received_json(filename, payload):
     return filepath
 
 
+def _write_skipped_json(timestamp, skip_type, reason, event_data, normalized):
+    payload = dict(event_data)
+    payload["skipped"] = True
+    payload["skip_type"] = skip_type
+    payload["skip_reason"] = reason
+    payload["parsed"] = normalized
+    filename = f"{timestamp}_skipped_{secure_filename(skip_type) or 'event'}.json"
+    return _write_received_json(filename, payload)
+
+
+def _should_log_duplicate(count):
+    return count <= 3 or count % 100 == 0
+
+
 def _assign_nested(target, dotted_key, value):
     parts = [part for part in str(dotted_key).replace("[", ".").replace("]", "").split(".") if part]
     if not parts:
@@ -244,6 +258,7 @@ def tollgate_notification():
     stale_reason = _stale_event_reason(normalized)
     if stale_reason:
         print(f"[CAMERA] stale event skipped: {_event_label(normalized)} reason={stale_reason}")
+        _write_skipped_json(timestamp, "stale", stale_reason, event_data, normalized)
         clear_api_cache()
         return _camera_ok_response({"success": True, "message": "OK", "stale": True, "reason": stale_reason})
 
@@ -254,7 +269,10 @@ def tollgate_notification():
         if previous and now - previous["time"] < DUPLICATE_WINDOW_SEC:
             previous["time"] = now
             previous["count"] += 1
-            print(f"[CAMERA] exact duplicate skipped: {_event_label(normalized)} count={previous['count']}")
+            reason = f"exact duplicate inside {DUPLICATE_WINDOW_SEC}s window; count={previous['count']}"
+            if _should_log_duplicate(previous["count"]):
+                print(f"[CAMERA] exact duplicate skipped: {_event_label(normalized)} {reason}")
+                _write_skipped_json(timestamp, "exact_duplicate", reason, event_data, normalized)
             for event in recent_receiver_events:
                 if event.get("fingerprint") == fingerprint:
                     event["duplicate_count"] = previous["count"]
@@ -266,7 +284,10 @@ def tollgate_notification():
         if previous_plate and now - previous_plate["time"] < PLATE_DUPLICATE_WINDOW_SEC:
             previous_plate["time"] = now
             previous_plate["count"] += 1
-            print(f"[CAMERA] duplicate plate skipped: {_event_label(normalized)} count={previous_plate['count']}")
+            reason = f"same plate/camera/lane inside {PLATE_DUPLICATE_WINDOW_SEC}s window; count={previous_plate['count']}"
+            if _should_log_duplicate(previous_plate["count"]):
+                print(f"[CAMERA] duplicate plate skipped: {_event_label(normalized)} {reason}")
+                _write_skipped_json(timestamp, "duplicate_plate", reason, event_data, normalized)
             clear_api_cache()
             return _camera_ok_response({"success": True, "message": "OK", "duplicate_plate": True})
         recent_event_fingerprints[fingerprint] = {"time": now, "count": 0}

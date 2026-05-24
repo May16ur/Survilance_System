@@ -13,6 +13,8 @@ import mysql.connector
 from mysql.connector import Error
 from mysql.connector import pooling
 
+from project_config import get_camera_name_map, get_tcp_pair_map
+
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
@@ -30,7 +32,7 @@ LICENSE_CONFIDENCE_THRESHOLD = 0.10
 
 CLASS_NAMES = {0: "Mil Veh", 1: "Civil Veh"}
 
-CAMERA_NAME_MAP = {
+DEFAULT_CAMERA_NAME_MAP = {
     1: "IGOO TCP to Leh",
     2: "IGOO TCP to Kiari",
     3: "Kiari to Leh",
@@ -46,8 +48,9 @@ CAMERA_NAME_MAP = {
     13: "Chushul to Tara",
     14: "Chushul to Parma",
 }
+CAMERA_NAME_MAP = get_camera_name_map() or DEFAULT_CAMERA_NAME_MAP
 
-TCP_PAIR_MAP = {
+DEFAULT_TCP_PAIR_MAP = {
     "igoo": ("IGOO TCP to Leh", "IGOO TCP to Kiari"),
     "kiari": ("Kiari to Leh", "Kiari-CThang"),
     "cthang": ("C/Thang to Kiari", "C/Thang to Nyoma"),
@@ -56,6 +59,7 @@ TCP_PAIR_MAP = {
     "hanle": ("Hanle to Loma", "Hanle to Tasigang"),
     "chushul": ("Chushul to Tara", "Chushul to Parma"),
 }
+TCP_PAIR_MAP = get_tcp_pair_map() or DEFAULT_TCP_PAIR_MAP
 
 CAMERA_NAME_ALIASES = {
     "IGOO TCP to Leh": ["IGOO TCP to Leh", "Ego TCP to Leh", "IGOO to Leh", "IGOO TCP to Lay", "IGOO to Lay"],

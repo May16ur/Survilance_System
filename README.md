@@ -15,13 +15,14 @@ python -m pip install -r requirements.txt
 python app.py
 ```
 
-Backend host and port come from `.env`. For the client camera setup, use:
+Backend host, public URL, RTSP URLs, CP Plus DeviceID mapping, and TCP IN/OUT pairs come from `project_config.json`. For the client camera setup, edit:
 
-```text
-BACKEND_HOST=0.0.0.0
-BACKEND_PORT=7073
-BACKEND_PUBLIC_URL=http://192.168.2.146:7073
-VITE_BACKEND_URL=http://192.168.2.146:7073
+```json
+"server": {
+  "host": "0.0.0.0",
+  "port": 7073,
+  "public_url": "http://192.168.2.146:7073"
+}
 ```
 
 `0.0.0.0` makes Flask listen on the client machine network card. The camera should still be configured with the machine LAN IP, not `0.0.0.0`.
@@ -64,6 +65,8 @@ Frontend defaults to `http://127.0.0.1:5173`.
 - `GET /api/notifications/recent`
 
 Received tollgate payloads and files are saved under `backend/received/`.
+
+Add CP Plus cameras in `project_config.json` by putting each camera's `DeviceID` or IP in `cp_plus_keys`. TCP reports use the `tcp_pairs` list, where each pair has an `in_camera_id` and an `out_camera_id`.
 
 CP Plus ANPR events are now the primary detection source. The backend parses:
 
