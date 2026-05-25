@@ -1,3 +1,5 @@
+import { displayUnit } from "../components/Tables.jsx";
+
 export function ReceiverTable({ events }) {
   return (
     <div className="table-wrap">
@@ -14,7 +16,7 @@ export function ReceiverTable({ events }) {
             return (
               <tr key={event.event_file || event.fingerprint || `${row.camera_id}-${row.time}-${row.license}`}>
                 <td>{row.plate_number || row.license || "UNKNOWN"}</td>
-                <td>{row.unit || ""}</td>
+                <td>{displayUnit(row)}</td>
                 <td>{row.plate_confidence ?? ""}</td>
                 <td>{row.vehicle_type || row.class_name || ""}</td>
                 <td>{row.class_name || ""}</td>

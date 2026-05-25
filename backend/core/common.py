@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import datetime
 import threading
+import time
 from collections import Counter
 from xml.etree import ElementTree as ET
 
@@ -20,7 +21,10 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 VEHICLE_MODEL_PATH = os.path.join(BASE_DIR, "veh.pt")
 LICENSE_MODEL_PATH = os.path.join(BASE_DIR, "best.pt")
-VEH_DETAILS_PATH = os.getenv("VEH_DETAILS_PATH", os.path.join(PROJECT_ROOT, "VEH DETAILS.xlsx"))
+VEH_DETAILS_PATH = os.getenv(
+    "VEH_DETAILS_PATH",
+    os.path.join(PROJECT_ROOT, "datacontrol", "veh_details.xlsx"),
+)
 
 LOG_DIR = os.path.join(BASE_DIR, "flask_app", "static", "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -32,6 +36,27 @@ LICENSE_CONFIDENCE_THRESHOLD = 0.10
 
 CLASS_NAMES = {0: "Mil Veh", 1: "Civil Veh"}
 NO_RECORD_TEXT = "No record found"
+
+
+def class_bucket(class_name="", class_id=None):
+    text = str(class_name or "").lower()
+    if str(class_id) == "0" or "mil" in text:
+        return "mil"
+    if str(class_id) == "1" or "civil" in text:
+        return "civil"
+    return ""
+
+
+def display_unit_for_class(unit="", class_name="", class_id=None):
+    unit_text = str(unit or "").strip()
+    if unit_text and unit_text.lower() != NO_RECORD_TEXT.lower():
+        return unit_text
+    bucket = class_bucket(class_name, class_id)
+    if bucket == "civil":
+        return "Civil"
+    if bucket == "mil":
+        return "Mil"
+    return ""
 
 DEFAULT_CAMERA_NAME_MAP = {
     1: "IGOO TCP to Leh",
@@ -91,6 +116,8 @@ MYSQL_CONFIG = {
     "connection_timeout": int(os.getenv("MYSQL_CONNECTION_TIMEOUT", "2")),
 }
 MYSQL_POOL = None
+MYSQL_UNAVAILABLE_UNTIL = 0
+MYSQL_FAILURE_BACKOFF_SEC = int(os.getenv("MYSQL_FAILURE_BACKOFF_SEC", "10"))
 VEHICLE_LOG_UPDATE_WINDOW_SEC = int(os.getenv("ETCP_VEHICLE_LOG_UPDATE_WINDOW_SEC", "300"))
 UNKNOWN_TRACK_LOG_UPDATE_WINDOW_SEC = int(os.getenv("ETCP_UNKNOWN_TRACK_LOG_UPDATE_WINDOW_SEC", "1800"))
 
@@ -164,7 +191,13 @@ def _mysql_no_db_connection():
     )
 
 def _get_connection():
-    global MYSQL_POOL
+    global MYSQL_POOL, MYSQL_UNAVAILABLE_UNTIL
+    now = time.time()
+    if now < MYSQL_UNAVAILABLE_UNTIL:
+        remaining = max(1, int(MYSQL_UNAVAILABLE_UNTIL - now))
+        raise Error(f"MySQL temporarily unavailable after recent connection failure; retrying in {remaining}s")
+
+    had_pool = MYSQL_POOL is not None
     try:
         if MYSQL_POOL is None:
             MYSQL_POOL = pooling.MySQLConnectionPool(
@@ -175,7 +208,17 @@ def _get_connection():
             )
         return MYSQL_POOL.get_connection()
     except Exception:
-        return mysql.connector.connect(**MYSQL_CONFIG)
+        MYSQL_POOL = None
+        if not had_pool:
+            MYSQL_UNAVAILABLE_UNTIL = time.time() + max(1, MYSQL_FAILURE_BACKOFF_SEC)
+            raise
+        try:
+            conn = mysql.connector.connect(**MYSQL_CONFIG)
+            MYSQL_UNAVAILABLE_UNTIL = 0
+            return conn
+        except Exception:
+            MYSQL_UNAVAILABLE_UNTIL = time.time() + max(1, MYSQL_FAILURE_BACKOFF_SEC)
+            raise
 
 
 def check_mysql_connection(log=True):
@@ -485,6 +528,23 @@ def _camera_tcp_info(camera_name):
         if name in out_aliases:
             return tcp, "OUT"
     return "", ""
+
+
+def _camera_route_label(camera_name):
+    text = str(camera_name or "").strip()
+    if not text:
+        return "opposite camera"
+    return re.sub(r"\s+", " ", text.replace("TCP", "")).strip()
+
+
+def _tcp_out_remark(out_camera, matched=False, unknown=False):
+    label = _camera_route_label(out_camera)
+    if matched:
+        return f"OUT from {label}"
+    if unknown:
+        return f"Waiting OUT from {label} / OCR UNKNOWN"
+    return f"Waiting OUT from {label}"
+
 
 def camera_name_variants(name): return get_camera_aliases(name)
 
@@ -1017,6 +1077,7 @@ def _update_tcp_movement(cur, camera_name, lic, dt, speed, class_name, class_id,
         existing_in_camera = row["in_camera"] if isinstance(row, dict) else row[1]
         existing_time_in = row["time_in"] if isinstance(row, dict) else row[3]
         existing_speed_in = row.get("speed_in") if isinstance(row, dict) else row[4]
+        matched_remark = _tcp_out_remark(camera_name, matched=True)
 
         # Normal case: existing pending row is earlier, current detection is OUT.
         if existing_time_in is None or existing_time_in <= dt:
@@ -1028,11 +1089,11 @@ def _update_tcp_movement(cur, camera_name, lic, dt, speed, class_name, class_id,
                     time_out = %s,
                     speed_out = %s,
                     status = 'OUT',
-                    remarks = 'OUT matched / cleared',
+                    remarks = %s,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
                 """,
-                (camera_name, dt, speed, row_id),
+                (camera_name, dt, speed, matched_remark, row_id),
             )
         else:
             # Late/updated OCR case: current detection is earlier than pending row.
@@ -1052,7 +1113,7 @@ def _update_tcp_movement(cur, camera_name, lic, dt, speed, class_name, class_id,
                     vehicle_img = CASE WHEN %s <> '' THEN %s ELSE vehicle_img END,
                     plate_img = CASE WHEN %s <> '' THEN %s ELSE plate_img END,
                     status = 'OUT',
-                    remarks = 'OUT matched / cleared',
+                    remarks = %s,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
                 """,
@@ -1069,6 +1130,7 @@ def _update_tcp_movement(cur, camera_name, lic, dt, speed, class_name, class_id,
                     veh_img,
                     license_img,
                     license_img,
+                    _tcp_out_remark(existing_in_camera, matched=True),
                     row_id,
                 ),
             )
@@ -1114,7 +1176,7 @@ def _update_tcp_movement(cur, camera_name, lic, dt, speed, class_name, class_id,
         (
             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
             'IN',
-            'Waiting for OUT camera match'
+            %s
         )
         """,
         (
@@ -1128,6 +1190,7 @@ def _update_tcp_movement(cur, camera_name, lic, dt, speed, class_name, class_id,
             int(class_id),
             veh_img,
             license_img,
+            _tcp_out_remark(other_camera),
         ),
     )
 
@@ -1567,7 +1630,7 @@ def build_tcp_report_rows(tcp_name="all", limit=300, start_date=None, end_date=N
                     "time_out": "",
                     "speed": item["speed"],
                     "out_speed": "",
-                    "remarks": "Waiting for OUT camera match / OCR UNKNOWN",
+                    "remarks": _tcp_out_remark(out_camera, unknown=True),
                     "matched": False,
                     "detected_count": 1,
                 })
@@ -1622,7 +1685,7 @@ def build_tcp_report_rows(tcp_name="all", limit=300, start_date=None, end_date=N
                     "time_out": _fmt_dt(second.get("det_time")) if second else "",
                     "speed": first.get("speed", ""),
                     "out_speed": second.get("speed", "") if second else "",
-                    "remarks": "OUT matched / cleared" if second else "Waiting for OUT camera match",
+                    "remarks": _tcp_out_remark(out_camera, matched=bool(second)),
                     "matched": bool(second),
                     "detected_count": 2 if second else 1,
                 })
@@ -2013,7 +2076,7 @@ def enrich_rows_with_vehicle_master(rows):
     if not norms:
         for row in rows:
             row["vehicle_master_match"] = False
-            row["unit"] = row.get("unit") or NO_RECORD_TEXT
+            row["unit"] = display_unit_for_class(row.get("unit"), row.get("class_name"), row.get("class_id"))
             row["vehicle_type_master"] = row.get("vehicle_type_master") or NO_RECORD_TEXT
             row["vehicle_remarks"] = row.get("vehicle_remarks") or NO_RECORD_TEXT
         return rows
@@ -2036,7 +2099,7 @@ def enrich_rows_with_vehicle_master(rows):
             detail = master.get(norm)
             if not detail:
                 row["vehicle_master_match"] = False
-                row["unit"] = row.get("unit") or NO_RECORD_TEXT
+                row["unit"] = display_unit_for_class(row.get("unit"), row.get("class_name"), row.get("class_id"))
                 row["vehicle_type_master"] = row.get("vehicle_type_master") or NO_RECORD_TEXT
                 row["vehicle_remarks"] = row.get("vehicle_remarks") or NO_RECORD_TEXT
                 continue
@@ -2044,7 +2107,7 @@ def enrich_rows_with_vehicle_master(rows):
             row["master_license"] = detail.get("license_plate") or ""
             row["make_model"] = detail.get("make_model") or NO_RECORD_TEXT
             row["vehicle_type_master"] = detail.get("vehicle_type") or NO_RECORD_TEXT
-            row["unit"] = detail.get("unit") or NO_RECORD_TEXT
+            row["unit"] = display_unit_for_class(detail.get("unit"), row.get("class_name"), row.get("class_id"))
             row["driver_name"] = detail.get("driver_name") or NO_RECORD_TEXT
             row["vehicle_remarks"] = detail.get("remarks") or NO_RECORD_TEXT
     except Error as e:
@@ -2053,7 +2116,7 @@ def enrich_rows_with_vehicle_master(rows):
             detail = get_vehicle_details_from_excel(row.get("license") or row.get("license_plate") or row.get("plate_number") or "")
             if not detail:
                 row["vehicle_master_match"] = False
-                row["unit"] = row.get("unit") or NO_RECORD_TEXT
+                row["unit"] = display_unit_for_class(row.get("unit"), row.get("class_name"), row.get("class_id"))
                 row["vehicle_type_master"] = row.get("vehicle_type_master") or NO_RECORD_TEXT
                 row["vehicle_remarks"] = row.get("vehicle_remarks") or NO_RECORD_TEXT
                 continue
@@ -2061,7 +2124,7 @@ def enrich_rows_with_vehicle_master(rows):
             row["master_license"] = detail.get("license_plate") or ""
             row["make_model"] = detail.get("make_model") or NO_RECORD_TEXT
             row["vehicle_type_master"] = detail.get("vehicle_type") or NO_RECORD_TEXT
-            row["unit"] = detail.get("unit") or NO_RECORD_TEXT
+            row["unit"] = display_unit_for_class(detail.get("unit"), row.get("class_name"), row.get("class_id"))
             row["driver_name"] = detail.get("driver_name") or NO_RECORD_TEXT
             row["vehicle_remarks"] = detail.get("remarks") or NO_RECORD_TEXT
     return rows

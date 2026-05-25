@@ -29,15 +29,26 @@ def _log_receiver_hit(name):
     print(f"[CAMERA] {name} hit from {request.remote_addr} content-type={request.content_type}")
 
 
+def _duplicate_camera_key(normalized):
+    parts = [
+        str(normalized.get("camera_id") or ""),
+        str(normalized.get("camera_name") or "").strip().lower(),
+        str(normalized.get("device_id") or "").strip().lower(),
+        str(request.remote_addr or "").strip().lower(),
+        str(normalized.get("lane") or ""),
+        str(normalized.get("channel") or ""),
+    ]
+    return "|".join(parts)
+
+
 def _event_fingerprint(data, normalized):
     picture = (data or {}).get("Picture") or {}
     snap = picture.get("SnapInfo") or {}
     plate = picture.get("Plate") or {}
     parts = [
+        _duplicate_camera_key(normalized),
         str(normalized.get("license") or plate.get("PlateNumber") or ""),
         str(normalized.get("time") or snap.get("SnapTime") or snap.get("AccurateTime") or ""),
-        str(normalized.get("device_id") or snap.get("DeviceID") or request.remote_addr or ""),
-        str(normalized.get("lane") or snap.get("LanNo") or ""),
     ]
     raw = "|".join(parts)
     if raw.strip("|"):
@@ -50,9 +61,8 @@ def _plate_duplicate_key(normalized):
     if not plate or plate in ("UNKNOWN", "UNRECOGNISE", "UNRECOGNIZED"):
         return ""
     return "|".join([
+        _duplicate_camera_key(normalized),
         plate,
-        str(normalized.get("camera_id") or ""),
-        str(normalized.get("lane") or ""),
     ])
 
 
@@ -198,10 +208,14 @@ def _parse_camera_payload():
         else:
             parsed[key] = value
 
-    for key in ("Info", "Data", "data", "json", "event", "Event", "ANPR", "anpr", "payload", "Payload", "body", "Body", "parsed"):
+    for key in ("Info", "Data", "data", "json", "event", "Event", "events", "Events", "items", "records", "ANPR", "anpr", "payload", "Payload", "body", "Body", "parsed"):
         candidate = parsed.get(key)
         if isinstance(candidate, dict) and any(str(k).lower() == "picture" for k in candidate):
             return candidate
+        if isinstance(candidate, list):
+            nested = _unwrap_camera_payload(candidate)
+            if nested:
+                return nested
 
     return _unwrap_camera_payload(parsed)
 
@@ -216,7 +230,7 @@ def _unwrap_camera_payload(payload):
         return {}
     if any(str(k).lower() == "picture" for k in payload):
         return payload
-    for key in ("Info", "Data", "data", "json", "event", "Event", "ANPR", "anpr", "payload", "Payload", "body", "Body", "parsed"):
+    for key in ("Info", "Data", "data", "json", "event", "Event", "events", "Events", "items", "records", "ANPR", "anpr", "payload", "Payload", "body", "Body", "parsed"):
         candidate = payload.get(key)
         if isinstance(candidate, dict):
             if any(str(k).lower() == "picture" for k in candidate):
@@ -287,6 +301,13 @@ def tollgate_notification():
     }
 
     normalized = normalize_event(data)
+    if normalized.get("ignored_vehicle"):
+        reason = f"ignored vehicle type: {normalized.get('vehicle_type') or 'unknown'}"
+        print(f"[CAMERA] ignored event: {_event_label(normalized)} reason={reason}")
+        _write_skipped_json(timestamp, "ignored_vehicle", reason, event_data, normalized)
+        clear_api_cache()
+        return _camera_ok_response({"success": True, "message": "OK", "ignored": True, "reason": reason})
+
     fingerprint = _event_fingerprint(data, normalized)
     plate_key = _plate_duplicate_key(normalized)
     stale_reason = _stale_event_reason(normalized)
@@ -343,9 +364,7 @@ def tollgate_notification():
             "Only plate/cutout image was received."
         )
     normalized["event_file"] = json_filename
-    db_result = store_event_in_db(normalized)
     event_data["parsed"] = normalized
-    event_data["db_result"] = db_result
     event_data["event_file"] = json_filename
     event_data["duplicate_count"] = 0
 
@@ -360,10 +379,9 @@ def tollgate_notification():
                 normalized["veh_img"] = saved["url"]
                 normalized["vehicle"] = saved["url"]
 
-    if event_data["files"]:
-        db_result = store_event_in_db(normalized)
-        event_data["parsed"] = normalized
-        event_data["db_result"] = db_result
+    db_result = store_event_in_db(normalized)
+    event_data["parsed"] = normalized
+    event_data["db_result"] = db_result
 
     _write_received_json(json_filename, event_data)
 

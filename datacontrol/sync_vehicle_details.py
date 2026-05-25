@@ -6,6 +6,7 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 BACKEND_DIR = os.path.join(PROJECT_ROOT, "backend")
+LOCAL_VEH_DETAILS_PATH = os.path.join(SCRIPT_DIR, "veh_details.xlsx")
 
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
@@ -30,7 +31,7 @@ def main():
     parser.add_argument(
         "--path",
         default=None,
-        help="Optional Excel path. Defaults to VEH_DETAILS_PATH from .env or project VEH DETAILS.xlsx.",
+        help="Optional Excel path. Defaults to datacontrol/veh_details.xlsx, then VEH_DETAILS_PATH.",
     )
     parser.add_argument(
         "--skip-schema-check",
@@ -39,7 +40,7 @@ def main():
     )
     args = parser.parse_args()
 
-    excel_path = args.path or VEH_DETAILS_PATH
+    excel_path = args.path or (LOCAL_VEH_DETAILS_PATH if os.path.exists(LOCAL_VEH_DETAILS_PATH) else VEH_DETAILS_PATH)
     print(f"[DATA SYNC] Excel: {excel_path}")
 
     mysql = check_mysql_connection(log=True)

@@ -7,6 +7,16 @@ function imagePath(row, keys) {
   return "";
 }
 
+export function displayUnit(row) {
+  const unit = String(row?.unit || "").trim();
+  if (unit && unit.toLowerCase() !== "no record found") return unit;
+  const className = String(row?.["Class Name"] || row?.class_name || "").toLowerCase();
+  const classId = String(row?.class_id ?? "");
+  if (classId === "0" || className.includes("mil")) return "Mil";
+  if (classId === "1" || className.includes("civil")) return "Civil";
+  return "";
+}
+
 export function LogTable({ rows, onDelete }) {
   return (
     <div className="table-wrap">
@@ -36,7 +46,7 @@ export function LogTable({ rows, onDelete }) {
                 <td>{row["Class Name"] || row.class_name || ""}</td>
                 <td>{row["Avg Speed"] || row.avg_speed || row.speed || ""}</td>
                 <td>{row["License"] || row.license || row.plate_no || ""}</td>
-                <td>{row.unit || ""}</td>
+                <td>{displayUnit(row)}</td>
                 <td>{row["Time"] || row.time || row.timestamp || row.time_in || ""}</td>
                 <td>{row.camera_name || row.camera || ""}</td>
                 <td>{row.source_type || row.source_table || ""}</td>
@@ -61,7 +71,7 @@ export function TcpTable({ rows }) {
           <tr>
             <th>Ser</th><th>TCP</th><th>License</th><th>Unit</th><th>Class</th><th>Track</th>
             <th>In Camera</th><th>Out Camera</th><th>Time In</th><th>Time Out</th>
-            <th>Status</th><th>Plate</th><th>Vehicle</th>
+            <th>Status</th><th>Remarks</th><th>Plate</th><th>Vehicle</th>
           </tr>
         </thead>
         <tbody>
@@ -70,7 +80,7 @@ export function TcpTable({ rows }) {
               <td>{row.ser_no || index + 1}</td>
               <td>{row.tcp}</td>
               <td>{row.license}</td>
-              <td>{row.unit || ""}</td>
+              <td>{displayUnit(row)}</td>
               <td>{row.class_name}</td>
               <td>{row.track_id}</td>
               <td>{row.in_camera}</td>
@@ -78,11 +88,12 @@ export function TcpTable({ rows }) {
               <td>{row.time_in}</td>
               <td>{row.time_out}</td>
               <td>{row.matched ? "Matched" : "Waiting"}</td>
+              <td>{row.remarks || ""}</td>
               <td>{row.plate ? <img className="thumb" src={row.plate} alt="Plate" /> : "No image"}</td>
               <td>{row.vehicle ? <img className="thumb" src={row.vehicle} alt="Vehicle" /> : "No image"}</td>
             </tr>
           ))}
-          {!rows?.length && <tr><td colSpan="13" className="empty-table">No TCP rows loaded.</td></tr>}
+          {!rows?.length && <tr><td colSpan="14" className="empty-table">No TCP rows loaded.</td></tr>}
         </tbody>
       </table>
     </div>

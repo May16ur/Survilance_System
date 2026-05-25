@@ -7,11 +7,12 @@ import re
 
 import cv2
 import numpy as np
-from flask import request
+from flask import has_request_context, request
 
 from core.common import (
     CAMERA_NAME_MAP,
     classify_vehicle_from_anpr,
+    display_unit_for_class,
     ensure_database,
     ensure_table,
     get_vehicle_master_info,
@@ -41,6 +42,7 @@ PLATE_IMAGE_KEYS = ("CutoutPic", "PlatePic", "platePic", "PlateCutout", "plateCu
 IMAGE_CONTENT_KEYS = ("Content", "content", "Data", "data", "Image", "image", "Base64", "base64", "imageBase64", "base64Image")
 VEHICLE_IMAGE_PATH_KEYS = ("veh_img", "vehicle_img", "vehicleImage", "vehicle_image", "vehicle")
 PLATE_IMAGE_PATH_KEYS = ("license_img", "plate_img", "plateImage", "plate_image", "plate", "plate_feature")
+IGNORED_VEHICLE_TYPES = {"MOTORCYCLE", "MOTORBIKE", "BIKE", "TWO WHEELER", "TWOWHEELER", "2WHEELER", "SCOOTER"}
 
 def safe_int(value, default=0):
     try:
@@ -55,7 +57,13 @@ def event_track_id():
     return int(datetime.datetime.now().timestamp() * 1000) % 2000000000
 
 
-def event_speed(vehicle):
+def is_ignored_vehicle_type(vehicle_type):
+    text = re.sub(r"[^A-Z0-9]+", " ", str(vehicle_type or "").upper()).strip()
+    compact = text.replace(" ", "")
+    return text in IGNORED_VEHICLE_TYPES or compact in IGNORED_VEHICLE_TYPES
+
+
+def event_speed(vehicle, class_id=None, class_name=""):
     value = first_present(vehicle or {}, SPEED_KEYS)
     try:
         match = re.search(r"-?\d+(?:\.\d+)?", str(value))
@@ -64,7 +72,14 @@ def event_speed(vehicle):
             return int(round(speed)), f"{int(round(speed))} km/h"
     except Exception:
         pass
-    speed = random.randint(20, 40)
+
+    class_text = str(class_name or "").lower()
+    if str(class_id) == "0" or "mil" in class_text:
+        speed = random.randint(20, 25)
+    elif str(class_id) == "1" or "civil" in class_text:
+        speed = random.randint(30, 50)
+    else:
+        speed = random.randint(30, 50)
     return speed, f"{speed} km/h"
 
 
@@ -86,9 +101,10 @@ def camera_from_event(data):
         except Exception:
             pass
 
+    remote_addr = str(request.remote_addr or "") if has_request_context() else ""
     keys = [
         str(first_present(snap, DEVICE_KEYS) or first_present(data or {}, DEVICE_KEYS) or ""),
-        str(request.remote_addr or ""),
+        remote_addr,
         str(first_present(snap, LANE_KEYS) or first_present(data or {}, LANE_KEYS) or ""),
         str(first_present(plate, CHANNEL_KEYS) or first_present(data or {}, CHANNEL_KEYS) or ""),
     ]
@@ -97,7 +113,8 @@ def camera_from_event(data):
             camera_id = safe_int(mapping[key], 1)
             return camera_id, CAMERA_NAME_MAP.get(camera_id, f"CP Plus Camera {camera_id}")
 
-    camera_id = safe_int(request.args.get("camera_id") or (data or {}).get("camera_id"), 1)
+    request_camera_id = request.args.get("camera_id") if has_request_context() else None
+    camera_id = safe_int(request_camera_id or (data or {}).get("camera_id"), 1)
     if camera_id not in CAMERA_NAME_MAP:
         camera_id = 1
     return camera_id, CAMERA_NAME_MAP.get(camera_id, f"CP Plus Camera {camera_id}")
@@ -222,7 +239,7 @@ def _crop_plate_from_box(data, image_bytes, image_dir, date_folder, timestamp):
         frame = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
         picture = first_object(data or {}, ("Picture", "picture", "ANPR", "anpr", "Event", "event")) or (data or {})
         plate = first_object(picture, ("Plate", "plate", "PlateInfo", "plateInfo", "LicensePlate", "licensePlate")) or picture
-        plate_box = first_present(plate, BOUNDING_BOX_KEYS) or first_present(data or {}, BOUNDING_BOX_KEYS) or []
+        plate_box = parse_box(first_present(plate, BOUNDING_BOX_KEYS) or first_present(data or {}, BOUNDING_BOX_KEYS))
         if frame is None or len(plate_box) != 4:
             return ""
 
@@ -276,7 +293,7 @@ def normalize_event(data, event_file=None):
     )
 
     master = get_vehicle_master_info(plate_number) if plate_number else None
-    raw_speed, speed_text = event_speed(vehicle or picture or data)
+    raw_speed, speed_text = event_speed(vehicle or picture or data, class_id=class_id, class_name=class_name)
     existing_vehicle_img = first_path(picture, VEHICLE_IMAGE_PATH_KEYS) or first_path(data or {}, VEHICLE_IMAGE_PATH_KEYS)
     existing_plate_img = first_path(picture, PLATE_IMAGE_PATH_KEYS) or first_path(data or {}, PLATE_IMAGE_PATH_KEYS)
 
@@ -292,8 +309,9 @@ def normalize_event(data, event_file=None):
         "plate_color": plate_color,
         "plate_type": plate_type,
         "vehicle_type": vehicle_type,
+        "ignored_vehicle": is_ignored_vehicle_type(vehicle_type),
         "vehicle_type_master": (master or {}).get("vehicle_type", "") or NO_RECORD_TEXT,
-        "unit": (master or {}).get("unit", "") or NO_RECORD_TEXT,
+        "unit": display_unit_for_class((master or {}).get("unit", ""), class_name, class_id),
         "driver_name": (master or {}).get("driver_name", "") or NO_RECORD_TEXT,
         "make_model": (master or {}).get("make_model", "") or NO_RECORD_TEXT,
         "vehicle_remarks": (master or {}).get("remarks", "") or NO_RECORD_TEXT,
@@ -362,9 +380,18 @@ def first_image_content(data, image_keys):
             if content:
                 return str(content)
         value = first_scalar(data, (key,))
-        if value and not first_path({key: value}, (key,)):
+        if value and looks_image_content(value):
             return str(value)
     return ""
+
+
+def looks_image_content(value):
+    text = str(value or "").strip()
+    if text.startswith("data:image/"):
+        return True
+    if first_path({"image": text}, ("image",)):
+        return False
+    return len(text) > 100 and bool(re.fullmatch(r"[A-Za-z0-9+/=\s]+", text))
 
 
 def first_path(data, keys):
@@ -376,6 +403,27 @@ def first_path(data, keys):
         if re.search(r"\.(?:jpg|jpeg|png|webp)(?:$|\?)", text, flags=re.IGNORECASE):
             return text
     return ""
+
+
+def parse_box(value):
+    if isinstance(value, (list, tuple)) and len(value) == 4:
+        return list(value)
+    if isinstance(value, dict):
+        candidates = [
+            (value.get("x1"), value.get("y1"), value.get("x2"), value.get("y2")),
+            (value.get("left"), value.get("top"), value.get("right"), value.get("bottom")),
+        ]
+        for candidate in candidates:
+            if all(item is not None for item in candidate):
+                return list(candidate)
+        if all(key in value for key in ("x", "y", "w", "h")):
+            x, y, w, h = value.get("x"), value.get("y"), value.get("w"), value.get("h")
+            return [x, y, safe_int(x) + safe_int(w), safe_int(y) + safe_int(h)]
+    if isinstance(value, str):
+        parts = re.findall(r"-?\d+", value)
+        if len(parts) >= 4:
+            return parts[:4]
+    return []
 
 
 def _find_text_in_picture_headers(picture, ignored_values):
