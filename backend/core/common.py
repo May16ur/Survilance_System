@@ -31,6 +31,7 @@ IOU_THRESHOLD = 0.20
 LICENSE_CONFIDENCE_THRESHOLD = 0.10
 
 CLASS_NAMES = {0: "Mil Veh", 1: "Civil Veh"}
+NO_RECORD_TEXT = "No record found"
 
 DEFAULT_CAMERA_NAME_MAP = {
     1: "IGOO TCP to Leh",
@@ -2007,6 +2008,11 @@ def enrich_rows_with_vehicle_master(rows):
             norms.append(norm)
     norms = list(dict.fromkeys(norms))
     if not norms:
+        for row in rows:
+            row["vehicle_master_match"] = False
+            row["unit"] = row.get("unit") or NO_RECORD_TEXT
+            row["vehicle_type_master"] = row.get("vehicle_type_master") or NO_RECORD_TEXT
+            row["vehicle_remarks"] = row.get("vehicle_remarks") or NO_RECORD_TEXT
         return rows
     try:
         conn = _get_connection()
@@ -2027,28 +2033,34 @@ def enrich_rows_with_vehicle_master(rows):
             detail = master.get(norm)
             if not detail:
                 row["vehicle_master_match"] = False
+                row["unit"] = row.get("unit") or NO_RECORD_TEXT
+                row["vehicle_type_master"] = row.get("vehicle_type_master") or NO_RECORD_TEXT
+                row["vehicle_remarks"] = row.get("vehicle_remarks") or NO_RECORD_TEXT
                 continue
             row["vehicle_master_match"] = True
             row["master_license"] = detail.get("license_plate") or ""
-            row["make_model"] = detail.get("make_model") or ""
-            row["vehicle_type_master"] = detail.get("vehicle_type") or ""
-            row["unit"] = detail.get("unit") or ""
-            row["driver_name"] = detail.get("driver_name") or ""
-            row["vehicle_remarks"] = detail.get("remarks") or ""
+            row["make_model"] = detail.get("make_model") or NO_RECORD_TEXT
+            row["vehicle_type_master"] = detail.get("vehicle_type") or NO_RECORD_TEXT
+            row["unit"] = detail.get("unit") or NO_RECORD_TEXT
+            row["driver_name"] = detail.get("driver_name") or NO_RECORD_TEXT
+            row["vehicle_remarks"] = detail.get("remarks") or NO_RECORD_TEXT
     except Error as e:
         print("Vehicle master enrichment error:", e)
         for row in rows:
             detail = get_vehicle_details_from_excel(row.get("license") or row.get("license_plate") or row.get("plate_number") or "")
             if not detail:
                 row["vehicle_master_match"] = False
+                row["unit"] = row.get("unit") or NO_RECORD_TEXT
+                row["vehicle_type_master"] = row.get("vehicle_type_master") or NO_RECORD_TEXT
+                row["vehicle_remarks"] = row.get("vehicle_remarks") or NO_RECORD_TEXT
                 continue
             row["vehicle_master_match"] = True
             row["master_license"] = detail.get("license_plate") or ""
-            row["make_model"] = detail.get("make_model") or ""
-            row["vehicle_type_master"] = detail.get("vehicle_type") or ""
-            row["unit"] = detail.get("unit") or ""
-            row["driver_name"] = detail.get("driver_name") or ""
-            row["vehicle_remarks"] = detail.get("remarks") or ""
+            row["make_model"] = detail.get("make_model") or NO_RECORD_TEXT
+            row["vehicle_type_master"] = detail.get("vehicle_type") or NO_RECORD_TEXT
+            row["unit"] = detail.get("unit") or NO_RECORD_TEXT
+            row["driver_name"] = detail.get("driver_name") or NO_RECORD_TEXT
+            row["vehicle_remarks"] = detail.get("remarks") or NO_RECORD_TEXT
     return rows
 
 def update_vehicle_log_row(data):

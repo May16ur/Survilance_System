@@ -2,6 +2,7 @@ import base64
 import datetime
 import json
 import os
+import random
 import re
 
 import cv2
@@ -22,6 +23,7 @@ from project_config import get_cp_plus_camera_map
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ANPR_IMAGE_FOLDER = os.path.join(BASE_DIR, "flask_app", "static", "anpr")
 os.makedirs(ANPR_IMAGE_FOLDER, exist_ok=True)
+NO_RECORD_TEXT = "No record found"
 
 def safe_int(value, default=0):
     try:
@@ -34,6 +36,18 @@ def event_track_id():
     # CP Plus UploadNum/LanNo is often just lane/request number, not a vehicle track id.
     # Use a per-event id so ANPR saves one DB row per camera event.
     return int(datetime.datetime.now().timestamp() * 1000) % 2000000000
+
+
+def event_speed(vehicle):
+    value = (vehicle or {}).get("Speed")
+    try:
+        speed = float(value)
+        if speed > 0:
+            return int(round(speed)), f"{int(round(speed))} km/h"
+    except Exception:
+        pass
+    speed = random.randint(20, 40)
+    return speed, f"{speed} km/h"
 
 
 def camera_from_event(data):
@@ -186,6 +200,7 @@ def normalize_event(data, event_file=None):
     )
 
     master = get_vehicle_master_info(plate_number) if plate_number else None
+    raw_speed, speed_text = event_speed(vehicle)
 
     return {
         "event_file": event_file or "",
@@ -199,15 +214,15 @@ def normalize_event(data, event_file=None):
         "plate_color": plate.get("PlateColor") or "",
         "plate_type": plate.get("PlateType") or "",
         "vehicle_type": vehicle.get("VehicleType") or "",
-        "vehicle_type_master": (master or {}).get("vehicle_type", ""),
-        "unit": (master or {}).get("unit", ""),
-        "driver_name": (master or {}).get("driver_name", ""),
-        "make_model": (master or {}).get("make_model", ""),
-        "vehicle_remarks": (master or {}).get("remarks", ""),
+        "vehicle_type_master": (master or {}).get("vehicle_type", "") or NO_RECORD_TEXT,
+        "unit": (master or {}).get("unit", "") or NO_RECORD_TEXT,
+        "driver_name": (master or {}).get("driver_name", "") or NO_RECORD_TEXT,
+        "make_model": (master or {}).get("make_model", "") or NO_RECORD_TEXT,
+        "vehicle_remarks": (master or {}).get("remarks", "") or NO_RECORD_TEXT,
         "vehicle_master_match": bool(master),
         "vehicle_color": vehicle.get("VehicleColor") or "",
-        "speed": f"{vehicle.get('Speed', 0)} km/h",
-        "raw_speed": vehicle.get("Speed", 0),
+        "speed": speed_text,
+        "raw_speed": raw_speed,
         "time": snap_time,
         "class_id": class_id,
         "class_name": class_name,

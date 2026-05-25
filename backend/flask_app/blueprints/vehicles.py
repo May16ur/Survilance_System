@@ -38,7 +38,15 @@ def api_vehicle_master_import_excel():
 @bp.route("/api/vehicle_info/<license_plate>")
 def api_vehicle_info(license_plate):
     info = get_vehicle_master_info(license_plate)
-    return jsonify({"success": bool(info), "info": info or {}})
+    return jsonify({
+        "success": bool(info),
+        "info": info or {
+            "license_plate": license_plate,
+            "unit": "No record found",
+            "vehicle_type": "No record found",
+            "remarks": "No record found",
+        },
+    })
 
 
 @bp.route("/api/update_log", methods=["POST"])
