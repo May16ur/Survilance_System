@@ -1,68 +1,25 @@
 from flask import Flask, request
-import json
-import os
-from datetime import datetime
 
 app = Flask(__name__)
 
-SAVE_DIR = "received"
-os.makedirs(SAVE_DIR, exist_ok=True)
+@app.route("/", methods=["GET", "POST"])
+def root():
+    print("ROOT HIT", request.method, request.data[:500])
+    return "OK"
 
+@app.route("/NotificationInfo/KeepAlive", methods=["GET", "POST"])
+def keep_alive():
+    print("KEEP ALIVE HIT")
+    print(request.data.decode(errors="ignore"))
+    return "OK"
 
-@app.route('/NotificationInfo/TollgateInfo', methods=['POST'])
-def tollgate():
+@app.route("/NotificationInfo/<path:any_path>", methods=["GET", "POST"])
+def notification(any_path):
+    print("\nANPR/API HIT")
+    print("PATH:", any_path)
+    print("METHOD:", request.method)
+    print("HEADERS:", dict(request.headers))
+    print("BODY:", request.data.decode(errors="ignore")[:3000])
+    return "OK"
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-
-    # CASE 1: JSON DATA
-    if request.is_json:
-
-        data = request.get_json()
-
-    else:
-
-        # FORM DATA
-        data = request.form.to_dict(flat=False)
-
-    event_data = {
-        "received_at": datetime.now().isoformat(),
-        "content_type": request.content_type,
-        "data": data,
-        "files": []
-    }
-
-    # FILES
-    for key in request.files:
-
-        file = request.files[key]
-
-        filename = timestamp + "_" + file.filename
-
-        filepath = os.path.join(SAVE_DIR, filename)
-
-        file.save(filepath)
-
-        event_data["files"].append({
-            "field": key,
-            "filename": file.filename,
-            "saved_as": filepath
-        })
-
-    json_filename = timestamp + "_event.json"
-    json_filepath = os.path.join(SAVE_DIR, json_filename)
-
-    with open(json_filepath, "w", encoding="utf-8") as json_file:
-        json.dump(event_data, json_file, indent=4, ensure_ascii=False)
-
-    return "OK", 200
-
-
-@app.route('/NotificationInfo/KeepAlive', methods=['POST'])
-def keepalive():
-    print(f"[KEEPALIVE] Received keepalive at {datetime.now().isoformat()}")
-    return "OK", 200
-
-
-
-if __name__ == '__main__':
-    app.run(host='192.168.2.146', port=7073, debug=True)
+app.run(host="192.168.2.50", port=8080, debug=True)

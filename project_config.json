@@ -1,8 +1,8 @@
 {
   "server": {
     "host": "0.0.0.0",
-    "port": 7073,
-    "public_url": "http://192.168.2.146:7073"
+    "port": 8080,
+    "public_url": "http://192.168.2.50:8080"
   },
   "cameras": [
     {
@@ -19,7 +19,9 @@
       "tcp": "igoo",
       "direction": "OUT",
       "rtsp_url": "",
-      "cp_plus_keys": []
+      "cp_plus_keys": [
+       
+      ]
     },
     {
       "id": 3,
@@ -27,7 +29,10 @@
       "tcp": "kiari",
       "direction": "IN",
       "rtsp_url": "rtsp://admin:Welcome%2A123@192.168.2.110:554/video/live?channel=1&subtype=0",
-      "cp_plus_keys": []
+      "cp_plus_keys": [
+         "63f73009-afc1-78ea-8c7e-744d4efcafc1",
+        "192.168.2.110"
+      ]
     },
     {
       "id": 4,

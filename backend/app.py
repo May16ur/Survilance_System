@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     server_config = get_server_config()
     host = str(server_config.get("host") or os.getenv("BACKEND_HOST") or os.getenv("APP_HOST") or "0.0.0.0")
-    port = int(server_config.get("port") or os.getenv("BACKEND_PORT") or os.getenv("APP_PORT") or "7073")
+    port = int(server_config.get("port") or os.getenv("BACKEND_PORT") or os.getenv("APP_PORT") or "8080")
 
     public_url = str(server_config.get("public_url") or os.getenv("BACKEND_PUBLIC_URL") or "").strip()
     display_host = "127.0.0.1" if host == "0.0.0.0" else host
