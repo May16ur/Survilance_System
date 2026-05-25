@@ -1,0 +1,17 @@
+192.168.2.110 8080
+255.255.255.0
+
+
+192.168.2.50:8080
+
+
+thread
+
+
+
+t1 camra1 rstp1
+t2 camrea2 rstp2
+t3 camrea3 rstp3
+
+
+t1 t2 t3 t1 t3 t t t t t t tt t t t 
