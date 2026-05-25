@@ -14,6 +14,8 @@ import { VehicleMasterPanel } from "./features/VehicleMasterPanel.jsx";
 import { AlertsPanel } from "./features/AlertsPanel.jsx";
 import { ReceiverTable } from "./features/ReceiverTable.jsx";
 import { MapPanel } from "./features/MapPanel.jsx";
+import leftLogo from "./assets/etcp-left-logo.png";
+import rightLogo from "./assets/etcp-right-logo.png";
 import "./styles.css";
 
 // App keeps page state and API actions; tab screens live in src/features.
@@ -391,7 +393,7 @@ function App() {
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <Activity size={26} />
+          <img src={leftLogo} alt="e-TCP left insignia" />
           <div>
             <strong>e-TCP</strong>
             <span>Surveillance System</span>
@@ -411,6 +413,15 @@ function App() {
       </aside>
 
       <section className="workspace">
+        <div className="site-banner">
+          <img src={leftLogo} alt="e-TCP left insignia" />
+          <div className="site-banner-copy">
+            <strong>E-TCP</strong>
+            <span>AI Based Speed Monitoring and TFC Control Post</span>
+          </div>
+          <img src={rightLogo} alt="e-TCP right insignia" />
+        </div>
+
         <header className="topbar">
           <div>
             <p className="eyebrow">Operations Console</p>

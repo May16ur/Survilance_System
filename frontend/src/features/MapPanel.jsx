@@ -119,7 +119,12 @@ export function MapPanel({ cameraStats, onViewStreams, onViewLogs, onViewTcp }) 
         })
       })
         .addTo(map)
-        .bindPopup(createTcpPopupHtml(marker));
+        .bindPopup(createTcpPopupHtml(marker), {
+          maxWidth: 240,
+          minWidth: 200,
+          autoPan: true,
+          keepInView: true
+        });
     });
 
     // Plot Camera Markers (Glowing CSS Pulsing Circle Icon)
@@ -139,7 +144,12 @@ export function MapPanel({ cameraStats, onViewStreams, onViewLogs, onViewTcp }) 
       const stats = cameraStats[cam.id] || { today_total: 0, today_mil: 0, today_civil: 0 };
       const marker = L.marker([cam.lat, cam.lng], { icon: cameraIcon })
         .addTo(map)
-        .bindPopup(createCameraPopupHtml(cam, stats));
+        .bindPopup(createCameraPopupHtml(cam, stats), {
+          maxWidth: 240,
+          minWidth: 200,
+          autoPan: true,
+          keepInView: true
+        });
 
       markersRef.current[cam.id] = marker;
     });

@@ -10,7 +10,7 @@ from flask import Blueprint, Response, jsonify, request
 from werkzeug.utils import secure_filename
 
 from flask_app.blueprints.route_utils import RECEIVED_FOLDER, clear_api_cache
-from flask_app.services.cp_plus import decode_event_images, normalize_event, store_event_in_db
+from flask_app.services.cp_plus import decode_event_images, image_content_status, normalize_event, store_event_in_db
 from flask_app.services.cp_plus import ANPR_IMAGE_FOLDER
 
 bp = Blueprint("notifications", __name__)
@@ -173,7 +173,7 @@ def _assign_nested(target, dotted_key, value):
 
 def _parse_camera_payload():
     if request.is_json:
-        return request.get_json(silent=True) or {}
+        return _unwrap_camera_payload(request.get_json(silent=True) or {})
 
     form = request.form.to_dict(flat=False)
     parsed = {}
@@ -186,7 +186,7 @@ def _parse_camera_payload():
                 try:
                     candidate = json.loads(stripped)
                     if isinstance(candidate, dict):
-                        if "Picture" in candidate:
+                        if any(str(k).lower() == "picture" for k in candidate):
                             parsed.update(candidate)
                         else:
                             parsed[key] = candidate
@@ -198,12 +198,46 @@ def _parse_camera_payload():
         else:
             parsed[key] = value
 
-    for key in ("Info", "Data", "data", "json", "event", "ANPR"):
+    for key in ("Info", "Data", "data", "json", "event", "Event", "ANPR", "anpr", "payload", "Payload", "body", "Body", "parsed"):
         candidate = parsed.get(key)
-        if isinstance(candidate, dict) and "Picture" in candidate:
+        if isinstance(candidate, dict) and any(str(k).lower() == "picture" for k in candidate):
             return candidate
 
-    return parsed
+    return _unwrap_camera_payload(parsed)
+
+
+def _unwrap_camera_payload(payload):
+    if not isinstance(payload, dict):
+        if isinstance(payload, list):
+            for item in payload:
+                nested = _unwrap_camera_payload(item)
+                if nested:
+                    return nested
+        return {}
+    if any(str(k).lower() == "picture" for k in payload):
+        return payload
+    for key in ("Info", "Data", "data", "json", "event", "Event", "ANPR", "anpr", "payload", "Payload", "body", "Body", "parsed"):
+        candidate = payload.get(key)
+        if isinstance(candidate, dict):
+            if any(str(k).lower() == "picture" for k in candidate):
+                return candidate
+            nested = _unwrap_camera_payload(candidate)
+            if nested:
+                return nested
+        if isinstance(candidate, list):
+            nested = _unwrap_camera_payload(candidate)
+            if nested:
+                return nested
+        if isinstance(candidate, str):
+            stripped = candidate.strip()
+            if stripped.startswith("{") and stripped.endswith("}"):
+                try:
+                    nested = _unwrap_camera_payload(json.loads(stripped))
+                    if nested:
+                        return nested
+                except Exception:
+                    pass
+    return payload
 
 
 def _save_camera_file(file, field, timestamp):
@@ -297,10 +331,17 @@ def tollgate_notification():
     _write_received_json(json_filename, event_data)
 
     veh_img, license_img, _image_bytes = decode_event_images(data, timestamp)
-    normalized["veh_img"] = veh_img
-    normalized["vehicle"] = veh_img
-    normalized["license_img"] = license_img
-    normalized["plate"] = license_img
+    image_status = image_content_status(data)
+    normalized["veh_img"] = veh_img or normalized.get("veh_img", "")
+    normalized["vehicle"] = normalized["veh_img"]
+    normalized["license_img"] = license_img or normalized.get("license_img", "")
+    normalized["plate"] = normalized["license_img"]
+    normalized["image_sources"] = image_status
+    if not veh_img:
+        normalized["vehicle_image_missing_reason"] = (
+            "Camera payload did not include VehiclePic/NormalPic/OriginalImage/VehicleBodyCutout content. "
+            "Only plate/cutout image was received."
+        )
     normalized["event_file"] = json_filename
     db_result = store_event_in_db(normalized)
     event_data["parsed"] = normalized

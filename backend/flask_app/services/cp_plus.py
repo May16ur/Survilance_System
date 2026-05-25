@@ -24,6 +24,23 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 ANPR_IMAGE_FOLDER = os.path.join(BASE_DIR, "flask_app", "static", "anpr")
 os.makedirs(ANPR_IMAGE_FOLDER, exist_ok=True)
 NO_RECORD_TEXT = "No record found"
+PLATE_KEYS = ("PlateNumber", "plateNumber", "PlateNo", "plateNo", "Plate", "plate", "license", "License", "licensePlate", "LicensePlate", "plate_number", "plateNumberText", "carNo", "CarNo", "vrn", "VRN")
+CONFIDENCE_KEYS = ("Confidence", "confidence", "Accuracy", "accuracy", "PlateConfidence", "plateConfidence", "plate_confidence", "confidenceLevel")
+PLATE_COLOR_KEYS = ("PlateColor", "plateColor", "PlateBackColor", "plateBackColor")
+PLATE_TYPE_KEYS = ("PlateType", "plateType")
+VEHICLE_TYPE_KEYS = ("VehicleType", "vehicleType", "VehicleSign", "vehicleSign", "Type", "type", "vehicle_class", "vehicleClass", "class", "Class")
+VEHICLE_COLOR_KEYS = ("VehicleColor", "vehicleColor", "Color", "color", "vehicle_color")
+SPEED_KEYS = ("Speed", "speed", "VehicleSpeed", "vehicleSpeed", "VehicleSpeedValue", "speedValue", "raw_speed", "avg_speed")
+TIME_KEYS = ("SnapTime", "snapTime", "AccurateTime", "accurateTime", "CaptureTime", "captureTime", "Time", "time", "DateTime", "dateTime", "timestamp", "event_time", "eventTime", "created_at", "received_at")
+DEVICE_KEYS = ("DeviceID", "deviceID", "deviceId", "DeviceId", "DevID", "devId", "device_id", "cameraDeviceId")
+LANE_KEYS = ("LanNo", "lanNo", "LaneNo", "laneNo", "Lane", "lane", "lane_id")
+CHANNEL_KEYS = ("Channel", "channel", "ChannelID", "channelId")
+BOUNDING_BOX_KEYS = ("BoundingBox", "boundingBox", "PlateBoundingBox", "plateBoundingBox", "bbox", "box")
+VEHICLE_IMAGE_KEYS = ("VehiclePic", "NormalPic", "vehiclePic", "normalPic", "OriginalImage", "originalImage", "VehicleBodyCutout", "vehicleImage", "vehicle_img", "veh_img", "vehicle")
+PLATE_IMAGE_KEYS = ("CutoutPic", "PlatePic", "platePic", "PlateCutout", "plateCutout", "plateImage", "plate_img", "license_img", "plate")
+IMAGE_CONTENT_KEYS = ("Content", "content", "Data", "data", "Image", "image", "Base64", "base64", "imageBase64", "base64Image")
+VEHICLE_IMAGE_PATH_KEYS = ("veh_img", "vehicle_img", "vehicleImage", "vehicle_image", "vehicle")
+PLATE_IMAGE_PATH_KEYS = ("license_img", "plate_img", "plateImage", "plate_image", "plate", "plate_feature")
 
 def safe_int(value, default=0):
     try:
@@ -39,9 +56,10 @@ def event_track_id():
 
 
 def event_speed(vehicle):
-    value = (vehicle or {}).get("Speed")
+    value = first_present(vehicle or {}, SPEED_KEYS)
     try:
-        speed = float(value)
+        match = re.search(r"-?\d+(?:\.\d+)?", str(value))
+        speed = float(match.group(0)) if match else 0
         if speed > 0:
             return int(round(speed)), f"{int(round(speed))} km/h"
     except Exception:
@@ -56,9 +74,9 @@ def camera_from_event(data):
     Optional env mapping:
     CP_PLUS_CAMERA_MAP='{"device-id": 3, "192.168.1.110": 3}'
     """
-    picture = (data or {}).get("Picture") or {}
-    snap = picture.get("SnapInfo") or {}
-    plate = picture.get("Plate") or {}
+    picture = first_object(data or {}, ("Picture", "picture", "ANPR", "anpr", "Event", "event")) or (data or {})
+    snap = first_object(picture, ("SnapInfo", "snapInfo", "Snap", "snap", "Info", "info")) or {}
+    plate = first_object(picture, ("Plate", "plate", "PlateInfo", "plateInfo")) or {}
 
     mapping = get_cp_plus_camera_map()
     mapping_raw = os.getenv("CP_PLUS_CAMERA_MAP", "").strip()
@@ -69,10 +87,10 @@ def camera_from_event(data):
             pass
 
     keys = [
-        str(snap.get("DeviceID") or ""),
+        str(first_present(snap, DEVICE_KEYS) or first_present(data or {}, DEVICE_KEYS) or ""),
         str(request.remote_addr or ""),
-        str(snap.get("LanNo") or ""),
-        str(plate.get("Channel") or ""),
+        str(first_present(snap, LANE_KEYS) or first_present(data or {}, LANE_KEYS) or ""),
+        str(first_present(plate, CHANNEL_KEYS) or first_present(data or {}, CHANNEL_KEYS) or ""),
     ]
     for key in keys:
         if key and key in mapping:
@@ -86,6 +104,8 @@ def camera_from_event(data):
 
 
 def _jpeg_start_positions(image_bytes):
+    if not image_bytes:
+        return []
     positions = []
     start = 0
     while True:
@@ -95,6 +115,26 @@ def _jpeg_start_positions(image_bytes):
         positions.append(pos)
         start = pos + 2
     return positions
+
+
+def _split_jpegs(image_bytes):
+    """Return clean JPEG byte chunks from payloads that may concatenate images."""
+    if not image_bytes:
+        return []
+    starts = _jpeg_start_positions(image_bytes)
+    if not starts:
+        return [image_bytes]
+
+    chunks = []
+    for index, start in enumerate(starts):
+        end = starts[index + 1] if index + 1 < len(starts) else len(image_bytes)
+        chunk = image_bytes[start:end]
+        eoi = chunk.rfind(b"\xff\xd9")
+        if eoi >= 0:
+            chunk = chunk[:eoi + 2]
+        if chunk:
+            chunks.append(chunk)
+    return chunks
 
 
 def decode_event_images(data, timestamp):
@@ -107,39 +147,58 @@ def decode_event_images(data, timestamp):
     image_dir = os.path.join(ANPR_IMAGE_FOLDER, date_folder)
     os.makedirs(image_dir, exist_ok=True)
 
-    picture = (data or {}).get("Picture") or {}
-    vehicle_content = (
-        (picture.get("VehiclePic") or {}).get("Content")
-        or (picture.get("NormalPic") or {}).get("Content")
-        or ""
-    )
-    plate_content = (picture.get("CutoutPic") or {}).get("Content") or ""
+    picture = first_object(data or {}, ("Picture", "picture", "ANPR", "anpr", "Event", "event")) or (data or {})
+    vehicle_content = first_image_content(picture, VEHICLE_IMAGE_KEYS) or first_image_content(data or {}, VEHICLE_IMAGE_KEYS)
+    plate_content = first_image_content(picture, PLATE_IMAGE_KEYS) or first_image_content(data or {}, PLATE_IMAGE_KEYS)
     if not vehicle_content and not plate_content:
         return "", "", None
 
     vehicle_bytes = _decode_base64_image(vehicle_content)
     plate_bytes = _decode_base64_image(plate_content)
-    image_bytes = vehicle_bytes or plate_bytes
+    vehicle_images = _split_jpegs(vehicle_bytes)
+    plate_images = _split_jpegs(plate_bytes)
+    image_bytes = (vehicle_images[0] if vehicle_images else None) or (plate_images[0] if plate_images else None)
 
     vehicle_rel = ""
-    if vehicle_bytes:
-        starts = _jpeg_start_positions(vehicle_bytes)
-        clean_vehicle_bytes = vehicle_bytes[starts[0]:] if starts else vehicle_bytes
+    if vehicle_images:
         vehicle_filename = f"{timestamp}_vehicle.jpg"
         with open(os.path.join(image_dir, vehicle_filename), "wb") as image_file:
-            image_file.write(clean_vehicle_bytes)
+            image_file.write(vehicle_images[0])
         vehicle_rel = f"/static/anpr/{date_folder}/{vehicle_filename}"
 
-        if len(starts) > 1 and not plate_bytes:
-            plate_bytes = vehicle_bytes[starts[1]:]
+        if len(vehicle_images) > 1 and not plate_images:
+            plate_images = [vehicle_images[1]]
 
-    if plate_bytes:
+    if plate_images:
         plate_filename = f"{timestamp}_plate.jpg"
         with open(os.path.join(image_dir, plate_filename), "wb") as plate_file:
-            plate_file.write(plate_bytes)
+            plate_file.write(plate_images[0])
         return vehicle_rel, f"/static/anpr/{date_folder}/{plate_filename}", image_bytes
 
     return vehicle_rel, _crop_plate_from_box(data, image_bytes, image_dir, date_folder, timestamp), image_bytes
+
+
+def image_content_status(data):
+    picture = first_object(data or {}, ("Picture", "picture", "ANPR", "anpr", "Event", "event")) or (data or {})
+    vehicle_sources = []
+    plate_sources = []
+
+    for key in VEHICLE_IMAGE_KEYS:
+        obj = first_object(picture, (key,))
+        if obj and first_present(obj, IMAGE_CONTENT_KEYS):
+            vehicle_sources.append(key)
+
+    for key in PLATE_IMAGE_KEYS:
+        obj = first_object(picture, (key,))
+        if obj and first_present(obj, IMAGE_CONTENT_KEYS):
+            plate_sources.append(key)
+
+    return {
+        "vehicle_sources": vehicle_sources,
+        "plate_sources": plate_sources,
+        "has_vehicle_image": bool(vehicle_sources),
+        "has_plate_image": bool(plate_sources),
+    }
 
 
 def _decode_base64_image(content):
@@ -147,6 +206,8 @@ def _decode_base64_image(content):
         return None
     if "," in content[:80]:
         content = content.split(",", 1)[1]
+    if str(content).strip().startswith(("/", "http://", "https://")):
+        return None
     try:
         return base64.b64decode(content, validate=False)
     except Exception:
@@ -156,8 +217,12 @@ def _decode_base64_image(content):
 def _crop_plate_from_box(data, image_bytes, image_dir, date_folder, timestamp):
     """Fallback only: crop using the camera bounding box if no embedded plate JPEG exists."""
     try:
+        if not image_bytes:
+            return ""
         frame = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
-        plate_box = (((data or {}).get("Picture") or {}).get("Plate") or {}).get("BoundingBox") or []
+        picture = first_object(data or {}, ("Picture", "picture", "ANPR", "anpr", "Event", "event")) or (data or {})
+        plate = first_object(picture, ("Plate", "plate", "PlateInfo", "plateInfo", "LicensePlate", "licensePlate")) or picture
+        plate_box = first_present(plate, BOUNDING_BOX_KEYS) or first_present(data or {}, BOUNDING_BOX_KEYS) or []
         if frame is None or len(plate_box) != 4:
             return ""
 
@@ -178,29 +243,42 @@ def _crop_plate_from_box(data, image_bytes, image_dir, date_folder, timestamp):
 
 def normalize_event(data, event_file=None):
     """Convert a raw CP Plus payload to the row shape used by DB and React."""
-    picture = (data or {}).get("Picture") or {}
-    plate = picture.get("Plate") or {}
-    vehicle = picture.get("Vehicle") or {}
-    snap = picture.get("SnapInfo") or {}
-    normal_pic = picture.get("NormalPic") or {}
-    cutout_pic = picture.get("CutoutPic") or {}
+    picture = first_object(data or {}, ("Picture", "picture", "ANPR", "anpr", "Event", "event")) or (data or {})
+    plate = first_object(picture, ("Plate", "plate", "PlateInfo", "plateInfo", "LicensePlate", "licensePlate")) or {}
+    vehicle = first_object(picture, ("Vehicle", "vehicle", "VehicleInfo", "vehicleInfo", "Object", "object")) or {}
+    snap = first_object(picture, ("SnapInfo", "snapInfo", "Snap", "snap", "Info", "info")) or {}
+    normal_pic = first_object(picture, ("NormalPic", "normalPic", "VehiclePic", "vehiclePic", "OriginalImage", "originalImage")) or {}
+    cutout_pic = first_object(picture, ("CutoutPic", "cutoutPic", "PlatePic", "platePic", "PlateCutout", "plateCutout")) or {}
     camera_id, camera_name = camera_from_event(data or {})
 
     plate_number = str(
-        plate.get("PlateNumber")
+        first_scalar(plate, PLATE_KEYS)
+        or first_scalar(picture, PLATE_KEYS)
+        or first_scalar(data or {}, PLATE_KEYS)
         or _find_text_in_picture_headers(picture, ["UnRecognise", "Unknown"])
         or ""
     ).strip().upper()
-    snap_time = snap.get("SnapTime") or snap.get("AccurateTime") or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    snap_time = (
+        first_scalar(snap, TIME_KEYS)
+        or first_scalar(picture, TIME_KEYS)
+        or first_scalar(data or {}, TIME_KEYS)
+        or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+    plate_color = first_scalar(plate, PLATE_COLOR_KEYS) or first_scalar(picture, PLATE_COLOR_KEYS) or ""
+    plate_type = first_scalar(plate, PLATE_TYPE_KEYS) or first_scalar(picture, PLATE_TYPE_KEYS) or ""
+    vehicle_type = first_scalar(vehicle, VEHICLE_TYPE_KEYS) or first_scalar(picture, VEHICLE_TYPE_KEYS) or ""
+    vehicle_color = first_scalar(vehicle, VEHICLE_COLOR_KEYS) or first_scalar(picture, VEHICLE_COLOR_KEYS) or ""
     class_id, class_name, class_reason = classify_vehicle_from_anpr(
         plate_number,
-        plate_color=plate.get("PlateColor") or "",
-        plate_type=plate.get("PlateType") or "",
-        vehicle_type=vehicle.get("VehicleType") or "",
+        plate_color=plate_color,
+        plate_type=plate_type,
+        vehicle_type=vehicle_type,
     )
 
     master = get_vehicle_master_info(plate_number) if plate_number else None
-    raw_speed, speed_text = event_speed(vehicle)
+    raw_speed, speed_text = event_speed(vehicle or picture or data)
+    existing_vehicle_img = first_path(picture, VEHICLE_IMAGE_PATH_KEYS) or first_path(data or {}, VEHICLE_IMAGE_PATH_KEYS)
+    existing_plate_img = first_path(picture, PLATE_IMAGE_PATH_KEYS) or first_path(data or {}, PLATE_IMAGE_PATH_KEYS)
 
     return {
         "event_file": event_file or "",
@@ -210,33 +288,94 @@ def normalize_event(data, event_file=None):
         "track_id": event_track_id(),
         "license": plate_number or "UNKNOWN",
         "plate_number": plate_number,
-        "plate_confidence": plate.get("Confidence"),
-        "plate_color": plate.get("PlateColor") or "",
-        "plate_type": plate.get("PlateType") or "",
-        "vehicle_type": vehicle.get("VehicleType") or "",
+        "plate_confidence": first_scalar(plate, CONFIDENCE_KEYS) or first_scalar(picture, CONFIDENCE_KEYS),
+        "plate_color": plate_color,
+        "plate_type": plate_type,
+        "vehicle_type": vehicle_type,
         "vehicle_type_master": (master or {}).get("vehicle_type", "") or NO_RECORD_TEXT,
         "unit": (master or {}).get("unit", "") or NO_RECORD_TEXT,
         "driver_name": (master or {}).get("driver_name", "") or NO_RECORD_TEXT,
         "make_model": (master or {}).get("make_model", "") or NO_RECORD_TEXT,
         "vehicle_remarks": (master or {}).get("remarks", "") or NO_RECORD_TEXT,
         "vehicle_master_match": bool(master),
-        "vehicle_color": vehicle.get("VehicleColor") or "",
+        "vehicle_color": vehicle_color,
         "speed": speed_text,
         "raw_speed": raw_speed,
         "time": snap_time,
         "class_id": class_id,
         "class_name": class_name,
         "classification_reason": class_reason,
-        "device_id": snap.get("DeviceID") or "",
-        "lane": snap.get("LanNo"),
-        "channel": plate.get("Channel"),
-        "normal_pic_name": normal_pic.get("PicName") or "",
-        "cutout_pic_name": cutout_pic.get("PicName") or "",
-        "direction": "South to North",
-        "license_img": "",
-        "veh_img": "",
-        "is_detection_event": bool(picture),
+        "device_id": first_scalar(snap, DEVICE_KEYS) or first_scalar(data or {}, DEVICE_KEYS) or "",
+        "lane": first_scalar(snap, LANE_KEYS) or first_scalar(data or {}, LANE_KEYS),
+        "channel": first_scalar(plate, CHANNEL_KEYS) or first_scalar(data or {}, CHANNEL_KEYS),
+        "normal_pic_name": first_scalar(normal_pic, ("PicName", "picName", "FileName", "fileName")) or "",
+        "cutout_pic_name": first_scalar(cutout_pic, ("PicName", "picName", "FileName", "fileName")) or "",
+        "direction": first_scalar(picture, ("Direction", "direction")) or first_scalar(data or {}, ("Direction", "direction")) or "South to North",
+        "license_img": existing_plate_img,
+        "veh_img": existing_vehicle_img,
+        "is_detection_event": bool(picture or plate_number or vehicle_type or vehicle_color),
     }
+
+
+def first_object(data, keys):
+    value = first_present(data, keys)
+    return value if isinstance(value, dict) else None
+
+
+def first_present(data, keys):
+    if not isinstance(data, dict):
+        return None
+
+    lowered = {str(key).lower(): key for key in data.keys()}
+    for key in keys:
+        real_key = lowered.get(str(key).lower())
+        if real_key is not None:
+            value = data.get(real_key)
+            if value not in (None, ""):
+                return value
+
+    for value in data.values():
+        if isinstance(value, dict):
+            found = first_present(value, keys)
+            if found not in (None, ""):
+                return found
+        elif isinstance(value, list):
+            for item in value:
+                found = first_present(item, keys)
+                if found not in (None, ""):
+                    return found
+    return None
+
+
+def first_scalar(data, keys):
+    value = first_present(data, keys)
+    return value if value not in (None, "") and not isinstance(value, (dict, list)) else None
+
+
+def first_image_content(data, image_keys):
+    if not isinstance(data, dict):
+        return ""
+    for key in image_keys:
+        obj = first_object(data, (key,))
+        if obj:
+            content = first_present(obj, IMAGE_CONTENT_KEYS)
+            if content:
+                return str(content)
+        value = first_scalar(data, (key,))
+        if value and not first_path({key: value}, (key,)):
+            return str(value)
+    return ""
+
+
+def first_path(data, keys):
+    value = first_present(data, keys)
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith(("/", "http://", "https://")):
+            return text
+        if re.search(r"\.(?:jpg|jpeg|png|webp)(?:$|\?)", text, flags=re.IGNORECASE):
+            return text
+    return ""
 
 
 def _find_text_in_picture_headers(picture, ignored_values):

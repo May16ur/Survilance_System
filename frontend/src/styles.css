@@ -64,6 +64,13 @@ select {
   padding: 8px 8px 22px;
 }
 
+.brand img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
 .brand strong,
 .brand span {
   display: block;
@@ -95,6 +102,51 @@ nav button:hover {
 .workspace {
   padding: 22px;
   min-width: 0;
+}
+
+.site-banner {
+  min-height: 76px;
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) 88px;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 18px;
+  margin-bottom: 16px;
+  border: 1px solid #b8cce0;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #d7eaf8 0%, #bed8ec 100%);
+  overflow: hidden;
+}
+
+.site-banner img {
+  width: 70px;
+  height: 58px;
+  object-fit: contain;
+  justify-self: center;
+}
+
+.site-banner-copy {
+  min-width: 0;
+  text-align: center;
+  color: #c40000;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+
+.site-banner-copy strong {
+  display: block;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 34px;
+  letter-spacing: 0;
+  text-shadow: 1px 1px 0 #ffffff, 2px 2px 0 #6b1a1a;
+}
+
+.site-banner-copy span {
+  display: block;
+  margin-top: 8px;
+  font-size: 15px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
 }
 
 .topbar {
@@ -425,6 +477,25 @@ code {
     z-index: 5;
   }
 
+  .site-banner {
+    grid-template-columns: 54px minmax(0, 1fr) 54px;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .site-banner img {
+    width: 48px;
+    height: 42px;
+  }
+
+  .site-banner-copy strong {
+    font-size: 24px;
+  }
+
+  .site-banner-copy span {
+    font-size: 11px;
+  }
+
   nav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -516,10 +587,16 @@ code {
 }
 .leaflet-popup-content {
   margin: 12px 14px 10px 14px !important;
+  width: min(220px, calc(100vw - 64px)) !important;
+  max-width: calc(100vw - 64px) !important;
+  overflow: hidden;
 }
 .map-popup-card {
   font-family: Inter, "Segoe UI", sans-serif;
-  min-width: 190px;
+  width: 100%;
+  max-width: 220px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .map-popup-title {
   font-weight: 700;
@@ -529,6 +606,7 @@ code {
   border-bottom: 1px solid #2d3d4d;
   padding-bottom: 6px;
   text-align: center;
+  overflow-wrap: anywhere;
 }
 .map-popup-desc {
   font-size: 11px;
@@ -538,6 +616,8 @@ code {
 }
 .map-popup-table {
   width: 100%;
+  min-width: 0;
+  table-layout: fixed;
   border-collapse: collapse;
   margin-bottom: 10px;
   background: transparent !important;
@@ -550,6 +630,8 @@ code {
   color: #d6dde6 !important;
   background: transparent !important;
   text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .map-popup-table th {
   background: #253341 !important;
@@ -562,11 +644,13 @@ code {
 }
 .map-popup-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
 }
 .map-action-btn {
-  flex: 1;
+  flex: 1 1 92px;
+  min-width: 0;
   background: #198754;
   color: #ffffff;
   border: none;
@@ -580,6 +664,9 @@ code {
   display: flex;
   justify-content: center;
   align-items: center;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.2;
 }
 .map-action-btn:hover {
   background: #20c997;

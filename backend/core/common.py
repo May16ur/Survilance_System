@@ -1398,8 +1398,8 @@ def build_tcp_report_rows(tcp_name="all", limit=300, start_date=None, end_date=N
                 "rows": final[:limit],
                 "total_rows": len(final),
                 "matching_note": (
-                    "TCP report is built from vehicle_logs. UNKNOWN OCR rows are included. "
-                    "Matched IN/OUT vehicles show as one row with Time In and Time Out."
+                    "TCP report is built from MySQL vehicle_logs. IN/OUT is decided by detection time: "
+                    "the first camera that sees a plate is IN, and the next opposite camera is OUT."
                 ),
             }
 
@@ -1639,8 +1639,10 @@ def build_tcp_report_rows(tcp_name="all", limit=300, start_date=None, end_date=N
         return {
             "success": True,
             "tcp_name": tcp_name,
-            "in_camera": cam_a,
-            "out_camera": cam_b,
+            "camera_a": cam_a,
+            "camera_b": cam_b,
+            "in_camera": "First detection by time",
+            "out_camera": "Next opposite camera by time",
             "start_date": start_date,
             "end_date": end_date,
             "rows": display_rows,
@@ -1651,8 +1653,9 @@ def build_tcp_report_rows(tcp_name="all", limit=300, start_date=None, end_date=N
             "unknown_ocr_count": unknown_count,
             "display_limit": limit,
             "matching_note": (
-                "Built from vehicle_logs. All detections from both TCP cameras are considered. "
-                "Matched vehicle = one row with Time In + Time Out; unmatched/UNKNOWN OCR detections remain visible."
+                "Built from MySQL vehicle_logs. Both TCP cameras are considered. Either camera can be IN: "
+                "first detection by time is IN, and the next detection from the opposite camera is OUT. "
+                "Unmatched/UNKNOWN OCR detections remain visible."
             ),
         }
 
