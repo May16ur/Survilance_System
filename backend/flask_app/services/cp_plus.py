@@ -160,7 +160,7 @@ def decode_event_images(data, timestamp):
     CP Plus may concatenate two JPEGs in VehiclePic.Content:
     first = vehicle image, second = clean plate crop.
     """
-    date_folder = datetime.datetime.now().strftime("%Y%m%d")
+    date_folder = _date_folder_from_timestamp(timestamp)
     image_dir = os.path.join(ANPR_IMAGE_FOLDER, date_folder)
     os.makedirs(image_dir, exist_ok=True)
 
@@ -193,6 +193,13 @@ def decode_event_images(data, timestamp):
         return vehicle_rel, f"/static/anpr/{date_folder}/{plate_filename}", image_bytes
 
     return vehicle_rel, _crop_plate_from_box(data, image_bytes, image_dir, date_folder, timestamp), image_bytes
+
+
+def _date_folder_from_timestamp(timestamp):
+    match = re.match(r"^(\d{8})", str(timestamp or ""))
+    if match:
+        return match.group(1)
+    return datetime.datetime.now().strftime("%Y%m%d")
 
 
 def image_content_status(data):
@@ -326,9 +333,16 @@ def normalize_event(data, event_file=None):
         "device_id": first_scalar(snap, DEVICE_KEYS) or first_scalar(data or {}, DEVICE_KEYS) or "",
         "lane": first_scalar(snap, LANE_KEYS) or first_scalar(data or {}, LANE_KEYS),
         "channel": first_scalar(plate, CHANNEL_KEYS) or first_scalar(data or {}, CHANNEL_KEYS),
+        "plate_box": parse_box(first_present(plate, BOUNDING_BOX_KEYS) or first_present(data or {}, BOUNDING_BOX_KEYS)),
+        "vehicle_box": parse_box(first_present(vehicle, ("VehicleBoundingBox", "vehicleBoundingBox", "vehicle_box", "VehicleBox", "vehicleBox"))),
         "normal_pic_name": first_scalar(normal_pic, ("PicName", "picName", "FileName", "fileName")) or "",
         "cutout_pic_name": first_scalar(cutout_pic, ("PicName", "picName", "FileName", "fileName")) or "",
-        "direction": first_scalar(picture, ("Direction", "direction")) or first_scalar(data or {}, ("Direction", "direction")) or "South to North",
+        "direction": (
+            first_scalar(snap, ("Direction", "direction"))
+            or first_scalar(picture, ("Direction", "direction"))
+            or first_scalar(data or {}, ("Direction", "direction"))
+            or "South to North"
+        ),
         "license_img": existing_plate_img,
         "veh_img": existing_vehicle_img,
         "is_detection_event": bool(picture or plate_number or vehicle_type or vehicle_color),
