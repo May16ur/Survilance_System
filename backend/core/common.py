@@ -557,7 +557,16 @@ def normalize_plate_text(txt: str) -> str:
 def normalize_match_license(value):
     v = normalize_plate_text(value)
     if not v or v in {"UNKNOWN", "NONE", "NULL", "NAN"} or len(v) < 5: return ""
+    military = normalize_military_plate_candidate(v)
+    if military:
+        return military
     return v
+
+def normalize_plate_for_storage(value):
+    v = normalize_plate_text(value)
+    if not v or v in {"UNKNOWN", "NONE", "NULL", "NAN"}:
+        return ""
+    return normalize_military_plate_candidate(v) or v
 
 def _clean_match_license(value): return normalize_match_license(value)
 
@@ -587,8 +596,9 @@ def finalize_license(candidates, class_id):
         val = normalize_plate_text(x)
         if not (7 <= len(val) <= 12):
             continue
-        if mil_re.fullmatch(val):
-            cleaned.append(val)
+        military = normalize_military_plate_candidate(val)
+        if military:
+            cleaned.append(military)
             continue
         if val[:2] in valid_states and any(p.fullmatch(val) for p in civil_res):
             cleaned.append(val)
@@ -607,17 +617,31 @@ CIVIL_RE_LIST = [
     re.compile(r"^(LA|JK)\d{2}\d{4}$"),
 ]
 
+def normalize_military_plate_candidate(plate):
+    plate = normalize_plate_text(plate or "").upper()
+    if MIL_RE.fullmatch(plate):
+        return plate
+
+    # CP Plus/OCR can read the broad arrow as "1". Military plates still have
+    # exactly two digits before the first alphabet and end with an alphabet.
+    if plate.startswith("1") and MIL_RE.fullmatch(plate[1:]):
+        return plate[1:]
+    if plate.endswith("1") and MIL_RE.fullmatch(plate[:-1]):
+        return plate[:-1]
+    return ""
+
+
 def is_valid_license_text(plate):
     plate = normalize_plate_text(plate or "").upper()
     if not plate or plate in {"UNKNOWN", "NONE", "NULL", "NAN"}:
         return False
-    if MIL_RE.fullmatch(plate):
+    if normalize_military_plate_candidate(plate):
         return True
     return any(pattern.fullmatch(plate) for pattern in CIVIL_RE_LIST)
 
 def class_from_license_rule(plate):
     plate = normalize_plate_text(plate or "").upper()
-    if MIL_RE.fullmatch(plate):
+    if normalize_military_plate_candidate(plate):
         return 0, "Mil Veh"
     for pattern in CIVIL_RE_LIST:
         if pattern.fullmatch(plate):
@@ -720,7 +744,7 @@ def insert_vehicle_log_event(
     try:
         dt = parse_time_value(time_value)
         log_date = dt.date()
-        lic = normalize_plate_text(license_text) or "UNKNOWN"
+        lic = normalize_plate_for_storage(license_text) or "UNKNOWN"
         camera_id = _camera_id_from_name(camera_name)
 
         try:
@@ -825,7 +849,7 @@ def upsert_vehicle_log(
         dt = parse_time_value(time_value)
         log_date = dt.date()
 
-        lic = normalize_plate_text(license_text) or "UNKNOWN"
+        lic = normalize_plate_for_storage(license_text) or "UNKNOWN"
         lic_upper = lic.upper()
         new_license_good = is_valid_license_text(lic_upper)
 

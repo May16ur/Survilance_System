@@ -17,6 +17,7 @@ from core.common import (
     ensure_table,
     get_vehicle_master_info,
     insert_vehicle_log_event,
+    normalize_plate_for_storage,
 )
 from project_config import get_cp_plus_camera_map
 
@@ -320,6 +321,7 @@ def normalize_event(data, event_file=None):
         or _find_text_in_picture_headers(picture, ["UnRecognise", "Unknown"])
         or ""
     ).strip().upper()
+    plate_number = normalize_plate_for_storage(plate_number)
     snap_time = (
         first_scalar(snap, TIME_KEYS)
         or first_scalar(picture, TIME_KEYS)
