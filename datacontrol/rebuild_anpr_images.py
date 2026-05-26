@@ -14,7 +14,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
-RECEIVED = BACKEND / "received"
+BACKEND_RECEIVED = BACKEND / "received"
+DATACONTROL_RECEIVED = ROOT / "datacontrol" / "received"
 
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
@@ -118,25 +119,37 @@ def rebuild_file(path: Path, write: bool, sync_db: bool) -> dict:
     }
 
 
-def iter_files(pattern: str):
+def default_received_dir() -> Path:
+    if DATACONTROL_RECEIVED.exists():
+        return DATACONTROL_RECEIVED
+    return BACKEND_RECEIVED
+
+
+def iter_files(pattern: str, received_dir: Path):
     if pattern.endswith(".json"):
-        candidate = RECEIVED / pattern
+        candidate = received_dir / pattern
         if candidate.exists():
             yield candidate
         return
-    yield from sorted(RECEIVED.glob(pattern))
+    yield from sorted(received_dir.glob(pattern))
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Rebuild /static/anpr images from received JSON files.")
-    parser.add_argument("pattern", nargs="?", default="*_event.json", help="File name or glob inside backend/received")
+    parser.add_argument("pattern", nargs="?", default="*_event.json", help="File name or glob inside the received folder")
+    parser.add_argument(
+        "--received-dir",
+        default=str(default_received_dir()),
+        help="Folder containing received JSON files. Default prefers datacontrol/received, then backend/received.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Decode and report without updating JSON")
     parser.add_argument("--no-db", action="store_true", help="Do not sync recovered image paths into MySQL vehicle_logs")
     args = parser.parse_args()
 
-    files = list(iter_files(args.pattern))
+    received_dir = Path(args.received_dir).resolve()
+    files = list(iter_files(args.pattern, received_dir))
     if not files:
-        print(f"No matching files in {RECEIVED}: {args.pattern}")
+        print(f"No matching files in {received_dir}: {args.pattern}")
         return 1
 
     for path in files:
