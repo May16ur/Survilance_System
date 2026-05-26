@@ -1572,7 +1572,7 @@ def build_tcp_report_rows(tcp_name="all", limit=300, start_date=None, end_date=N
 
             return "", cname or "Unknown Camera"
 
-        valid_groups = {}
+        valid_items = []
         result_rows = []
         total_detections = 0
         unknown_count = 0
@@ -1606,7 +1606,8 @@ def build_tcp_report_rows(tcp_name="all", limit=300, start_date=None, end_date=N
             }
 
             if cleaned_license:
-                valid_groups.setdefault(cleaned_license, []).append(item)
+                item["cleaned_license"] = cleaned_license
+                valid_items.append(item)
             else:
                 # Do not hide UNKNOWN / bad OCR rows. They cannot be matched safely,
                 # but they must appear in TCP table as waiting rows.
@@ -1636,38 +1637,41 @@ def build_tcp_report_rows(tcp_name="all", limit=300, start_date=None, end_date=N
                 })
 
         matched_count = 0
+        valid_items.sort(key=lambda x: (x.get("det_time") or datetime.datetime.min, x.get("id") or 0))
+        used = set()
 
-        for lic, items in valid_groups.items():
-            items.sort(key=lambda x: (x.get("det_time") or datetime.datetime.min, x.get("id") or 0))
-            used = set()
+        for idx, first in enumerate(valid_items):
+            if idx in used:
+                continue
 
-            for idx, first in enumerate(items):
-                if idx in used:
+            used.add(idx)
+            match_idx = None
+            best_score = 0
+            best_seconds = None
+
+            for j in range(idx + 1, len(valid_items)):
+                if j in used:
                     continue
 
-                used.add(idx)
-                match_idx = None
+                second_candidate = valid_items[j]
 
-                for j in range(idx + 1, len(items)):
-                    if j in used:
-                        continue
+                if second_candidate["side"] != first["side"] and _license_match_score(first.get("cleaned_license"), second_candidate.get("cleaned_license")) >= 85:
+                    match_idx = j
+                    best_score = _license_match_score(first.get("cleaned_license"), second_candidate.get("cleaned_license"))
+                    break
 
-                    second_candidate = items[j]
+            second = valid_items[match_idx] if match_idx is not None else None
 
-                    if second_candidate["side"] != first["side"]:
-                        match_idx = j
-                        break
+            if second:
+                used.add(match_idx)
+                matched_count += 1
 
-                second = items[match_idx] if match_idx is not None else None
+            in_camera = first["camera"]
+            out_camera = second["camera"] if second else (cam_b if first["side"] == "A" else cam_a)
+            display_license = first.get("cleaned_license") or first.get("original_license") or "UNKNOWN"
+            second_license = second.get("cleaned_license") if second else ""
 
-                if second:
-                    used.add(match_idx)
-                    matched_count += 1
-
-                in_camera = first["camera"]
-                out_camera = second["camera"] if second else (cam_b if first["side"] == "A" else cam_a)
-
-                result_rows.append({
+            result_rows.append({
                     "tcp": tcp_name.upper(),
                     "camera": f"{in_camera} → {out_camera}",
                     "in_camera": in_camera,
@@ -1680,7 +1684,9 @@ def build_tcp_report_rows(tcp_name="all", limit=300, start_date=None, end_date=N
                     "veh_img": first.get("veh_img", ""),
                     "vehicle": first.get("veh_img", ""),
                     "source_table": "vehicle_logs",
-                    "license": lic,
+                    "license": display_license,
+                    "out_license": second_license,
+                    "match_score": best_score if second else 0,
                     "time_in": _fmt_dt(first.get("det_time")),
                     "time_out": _fmt_dt(second.get("det_time")) if second else "",
                     "speed": first.get("speed", ""),
