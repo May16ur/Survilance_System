@@ -1,30 +1,30 @@
 import React, { useEffect, useRef } from "react";
 
 const CAMERA_MARKERS = [
-  { id: 1, title: "IGOO TCP to Leh", lat: 33.879740, lng: 77.780750 },
-  { id: 2, title: "IGOO TCP to Kiari", lat: 33.878542, lng: 77.781616 },
-  { id: 3, title: "Kiari to Leh", lat: 33.482971, lng: 78.134058 },
-  { id: 4, title: "Kiari-CThang", lat: 33.476565, lng: 78.138349 },
-  { id: 5, title: "C/Thang to Kiari", lat: 33.356717, lng: 78.337862 },
-  { id: 6, title: "C/Thang to Nyoma", lat: 33.356610, lng: 78.338635 },
-  { id: 7, title: "Nyoma to C/Thang", lat: 33.6, lng: 78.1 },
-  { id: 8, title: "Nyoma to Loma", lat: 33.55, lng: 78.15 },
-  { id: 9, title: "Loma to Nyoma", lat: 33.4, lng: 78.3 },
-  { id: 10, title: "Loma to Hanle", lat: 33.35, lng: 78.35 },
-  { id: 11, title: "Hanle to Loma", lat: 33.2, lng: 78.5 },
-  { id: 12, title: "Hanle to Tasigang", lat: 33.15, lng: 78.55 },
-  { id: 13, title: "Chushul to Tara", lat: 34.3, lng: 78.0 },
-  { id: 14, title: "Chushul to Parma", lat: 34.25, lng: 78.05 }
+  { id: 1, title: "IGOO TCP to Leh", lat: 33.878587, lng: 77.824860 },
+  { id: 2, title: "IGOO TCP to Kiari", lat: 33.8780662, lng: 77.7829386 },
+  { id: 3, title: "Kiari to Leh", lat: 33.483244, lng: 78.134193 },
+  { id: 4, title: "Kiari-CThang", lat: 33.482215, lng: 78.133034 },
+  { id: 5, title: "C/Thang to Kiari", lat: 33.3606122, lng: 78.3197978 },
+  { id: 6, title: "C/Thang to Nyoma", lat: 33.3608113, lng: 78.3212177 },
+  { id: 7, title: "Nyoma to C/Thang", lat: 33.210140, lng: 78.584674 },
+  { id: 8, title: "Nyoma to Loma", lat: 33.209161, lng: 78.584674 },
+  { id: 9, title: "Loma to Nyoma", lat: 33.170641, lng: 78.822536 },
+  { id: 10, title: "Loma to Hanle", lat: 33.169103, lng: 78.824004 },
+  { id: 11, title: "Hanle to Loma", lat: 32.794446, lng: 79.004705 },
+  { id: 12, title: "Hanle to Tasigang", lat: 32.793154, lng: 79.006312 },
+  { id: 13, title: "Chushul to Tara", lat: 33.593525, lng: 78.640169 },
+  { id: 14, title: "Chushul to Parma", lat: 33.594526, lng: 78.6376603 }
 ];
 
 const TCP_MARKERS = [
-  { tcp: "igoo", title: "IGOO TCP", lat: 33.879, lng: 77.781 },
-  { tcp: "kiari", title: "Kiari TCP", lat: 33.480, lng: 78.136 },
-  { tcp: "cthang", title: "C/Thang TCP", lat: 33.357, lng: 78.338 },
-  { tcp: "nyoma", title: "Nyoma TCP", lat: 33.5, lng: 78.1 },
-  { tcp: "loma", title: "Loma TCP", lat: 33.45, lng: 78.2 },
-  { tcp: "hanle", title: "Hanle TCP", lat: 33.25, lng: 78.5 },
-  { tcp: "chushul", title: "Chushul TCP", lat: 34.27, lng: 78.02 },
+  { tcp: "igoo", title: "IGOO TCP", lat: 33.8783871, lng: 77.7826617 },
+  { tcp: "kiari", title: "Kiari TCP", lat: 33.482215, lng: 78.133443 },
+  { tcp: "cthang", title: "C/Thang TCP", lat: 33.3608113, lng: 78.3212177 },
+  { tcp: "nyoma", title: "Nyoma TCP", lat: 33.209705, lng: 78.586486 },
+  { tcp: "loma", title: "Loma TCP", lat: 33.169862, lng: 78.823201 },
+  { tcp: "hanle", title: "Hanle TCP", lat: 32.793730, lng: 79.005368 },
+  { tcp: "chushul", title: "Chushul TCP", lat: 33.593654, lng: 78.638218 },
 ];
 
 function createCameraPopupHtml(cam, stats) {
