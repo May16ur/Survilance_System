@@ -127,11 +127,13 @@ def default_received_dir() -> Path:
 
 def iter_files(pattern: str, received_dir: Path):
     if pattern.endswith(".json"):
-        candidate = received_dir / pattern
-        if candidate.exists():
+        candidate = Path(pattern)
+        if not candidate.is_absolute():
+            candidate = received_dir / pattern
+        if candidate.exists() and candidate.is_file():
             yield candidate
         return
-    yield from sorted(received_dir.glob(pattern))
+    yield from sorted(path for path in received_dir.rglob(pattern) if path.is_file())
 
 
 def main() -> int:
@@ -148,8 +150,10 @@ def main() -> int:
 
     received_dir = Path(args.received_dir).resolve()
     files = list(iter_files(args.pattern, received_dir))
+    if not files and args.pattern == "*_event.json":
+        files = list(iter_files("*.json", received_dir))
     if not files:
-        print(f"No matching files in {received_dir}: {args.pattern}")
+        print(f"No matching JSON files in {received_dir}")
         return 1
 
     for path in files:

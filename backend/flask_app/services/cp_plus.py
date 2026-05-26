@@ -174,6 +174,15 @@ def decode_event_images(data, timestamp):
     plate_bytes = _decode_base64_image(plate_content)
     vehicle_images = _split_jpegs(vehicle_bytes)
     plate_images = _split_jpegs(plate_bytes)
+
+    if not vehicle_images and len(plate_images) > 1:
+        plate_images = sorted(plate_images, key=_image_area, reverse=True)
+        vehicle_images = [plate_images[0]]
+        plate_images = plate_images[1:]
+    elif not vehicle_images and len(plate_images) == 1 and not _looks_like_plate_image(plate_images[0]):
+        vehicle_images = [plate_images[0]]
+        plate_images = []
+
     image_bytes = (vehicle_images[0] if vehicle_images else None) or (plate_images[0] if plate_images else None)
 
     vehicle_rel = ""
@@ -193,6 +202,34 @@ def decode_event_images(data, timestamp):
         return vehicle_rel, f"/static/anpr/{date_folder}/{plate_filename}", image_bytes
 
     return vehicle_rel, _crop_plate_from_box(data, image_bytes, image_dir, date_folder, timestamp), image_bytes
+
+
+def _image_shape(image_bytes):
+    try:
+        frame = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if frame is None:
+            return None
+        return frame.shape[:2]
+    except Exception:
+        return None
+
+
+def _image_area(image_bytes):
+    shape = _image_shape(image_bytes)
+    if not shape:
+        return 0
+    height, width = shape
+    return int(width) * int(height)
+
+
+def _looks_like_plate_image(image_bytes):
+    shape = _image_shape(image_bytes)
+    if not shape:
+        return True
+    height, width = shape
+    ratio = width / max(height, 1)
+    area = width * height
+    return height <= 180 and ratio >= 2.0 and area <= 120000
 
 
 def _date_folder_from_timestamp(timestamp):
@@ -230,10 +267,11 @@ def _decode_base64_image(content):
         return None
     if "," in content[:80]:
         content = content.split(",", 1)[1]
-    if str(content).strip().startswith(("/", "http://", "https://")):
+    text = str(content).strip()
+    if text.startswith(("http://", "https://", "/static/", "static/", "anpr/")):
         return None
     try:
-        return base64.b64decode(content, validate=False)
+        return base64.b64decode(text, validate=False)
     except Exception:
         return None
 
