@@ -15,3 +15,56 @@ t3 camrea3 rstp3
 
 
 t1 t2 t3 t1 t3 t t t t t t tt t t t 
+
+
+camerea1 110 _ > rstp  _> (data json format)
+  |
+  |
+/endpoint [POST]req.
+t1 -> rstp feed show live feed
+t2 -> json data handling -> parse -> image( base62 ) -> database save ->( base62) contverted to image website //300 ms 
+                                                                                        for one vechil detect
+ 
+t2 -> analize data frame detect cut important vchile detect ->event triger for next 10-20 sec -> retrieve informatiion -> > database save -> shown browser
+                                         //30sec ->per frame 1sec ->30fps -> 5-6 frame only
+                                                    5*30 150sec  toltal 1500/60 = 
+
+
+what is the issue?
+Current classification rules are mostly plate-based:
+
+Military Vehicle
+
+Plate starts with broad-arrow style marker if detected.
+Plate pattern looks like military format, for example year/code/serial style:
+24B141317E
+
+1 19B131092M
+first take only 2 digit before Alphabet
+
+
+2D189806Y
+second always end whith the alphabet
+
+Plate/background hints show military colors:
+black / olive background
+white or light text
+Vehicle metadata or type contains military/defence hints.
+Civil Vehicle
+
+Indian RTO-style plate pattern:
+JK 10A3931
+LA 02A7555
+MH 01EJ8131
+DL 8CAD1682
+State/UT prefix is recognized:
+JK, LA, MH, DL, HR, etc.
+Normal private/commercial plate hints:
+white/yellow/green plate background with black text.
+Unknown Vehicle
+
+Plate is empty, UNKNOWN, too short, or low confidence.
+Plate format does not safely match military or civil.
+Camera sends vehicle image but no plate number.
+OCR text looks noisy or incomplete.
+Important: this classification does not depend on YOLO now. It uses CP Plus ANPR fields: plate number, plate color/type, vehicle type, and metadata.

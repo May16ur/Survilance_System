@@ -109,8 +109,8 @@ def get_camera_aliases(camera_name):
 
 MYSQL_CONFIG = {
     "host": os.getenv("MYSQL_HOST", "localhost"),
-    "user": os.getenv("MYSQL_USER", "root"),
-    "password": os.getenv("MYSQL_PASSWORD", "root"),
+    "user": os.getenv("MYSQL_USER", ""),
+    "password": os.getenv("MYSQL_PASSWORD", ""),
     "database": os.getenv("MYSQL_DATABASE", "vehicle_logsnew"),
     "port": int(os.getenv("MYSQL_PORT", "3306")),
     "connection_timeout": int(os.getenv("MYSQL_CONNECTION_TIMEOUT", "2")),

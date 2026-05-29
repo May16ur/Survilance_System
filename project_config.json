@@ -2,7 +2,7 @@
   "server": {
     "host": "0.0.0.0",
     "port": 8080,
-    "public_url": "http://192.168.2.50:8080"
+    "public_url": "http://192.168.2.146:8080"
   },
   "cameras": [
     {

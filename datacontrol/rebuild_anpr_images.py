@@ -150,7 +150,7 @@ def main() -> int:
 
     received_dir = Path(args.received_dir).resolve()
     files = list(iter_files(args.pattern, received_dir))
-    if not files and args.pattern == "*_event.json":
+    if not files and args.pattern == "*_event":
         files = list(iter_files("*.json", received_dir))
     if not files:
         print(f"No matching JSON files in {received_dir}")
