@@ -649,7 +649,10 @@ def military_plate_from_partial(plate):
     if len(text) < 4:
         return ""
 
-    match = re.search(r"(1[2-9]|2[0-6])", text)
+    if len(text) >= 2 and text[:2] in RTO_STATE_PREFIXES:
+        return ""
+
+    match = re.match(r"1?(1[2-9]|2[0-6])", text)
     if not match:
         return ""
 
@@ -724,7 +727,7 @@ def correct_plate_with_master_or_military_format(value, min_score=50):
     if military:
         return military, "military_format_rebuild", 0
 
-    return direct, "raw_plate", 0
+    return raw, "raw_plate", 0
 
 
 def is_valid_license_text(plate):
