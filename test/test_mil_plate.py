@@ -70,9 +70,9 @@ def split_input(value: str):
 
 def result_for(value: str) -> dict:
     plate, color = split_input(value)
-    stored = normalize_plate_for_storage(plate, plate_color=color)
     corrected, correction_reason, correction_score = correct_plate_with_master_or_military_format(plate, plate_color=color)
-    match_key = normalize_match_license(plate)
+    stored = corrected or normalize_plate_for_storage(plate, plate_color=color)
+    match_key = normalize_match_license(corrected or plate, plate_color=color)
     rule_class = class_from_license_rule(stored or plate)
     anpr_class = classify_vehicle_from_anpr(plate, plate_color=color)
     return {

@@ -555,13 +555,13 @@ def normalize_plate_text(txt: str) -> str:
     if not txt: return ""
     return "".join(ch for ch in str(txt).upper().strip() if ch.isalnum())
 
-def normalize_match_license(value):
+def normalize_match_license(value, plate_color=""):
     v = normalize_plate_text(value)
     if not v or v in {"UNKNOWN", "NONE", "NULL", "NAN"} or len(v) < 5: return ""
     military = normalize_military_plate_candidate(v)
     if military:
         return military
-    military = military_plate_from_partial(v)
+    military = military_plate_from_partial(v, plate_color=plate_color)
     if military:
         return military
     return v
@@ -733,10 +733,14 @@ def find_vehicle_master_plate_match(plate, min_score=50):
 
 def correct_plate_with_master_or_military_format(value, min_score=50, plate_color=""):
     raw = normalize_plate_text(value)
+    strong_military = normalize_military_plate_candidate(raw)
+    if strong_military:
+        return strong_military, "valid_plate", 100
+
     if is_civil_plate_color(plate_color):
         return raw, "civil_plate_color", 100
 
-    direct = normalize_military_plate_candidate(raw)
+    direct = strong_military
     if not direct:
         direct = raw if any(pattern.fullmatch(raw) for pattern in CIVIL_RE_LIST) else ""
     if direct:
@@ -814,6 +818,9 @@ def classify_vehicle_from_anpr(plate, plate_color="", plate_type="", vehicle_typ
     if raw_plate.startswith(BROAD_ARROW_MARKERS) or any(raw_plate.startswith(marker) for marker in BROAD_ARROW_MARKERS):
         return 0, "Mil Veh", "broad_arrow"
 
+    if normalize_military_plate_candidate(raw_plate):
+        return 0, "Mil Veh", "plate_pattern"
+
     if is_civil_plate_color(plate_color):
         return 1, "Civil Veh", "civil_plate_color"
 
@@ -885,7 +892,10 @@ def insert_vehicle_log_event(
 
         try:
             rule_cls_id, rule_class_name = class_from_license_rule(lic)
-            if rule_cls_id is not None and not is_civil_plate_color(plate_color):
+            if rule_cls_id is not None and (
+                not is_civil_plate_color(plate_color)
+                or normalize_military_plate_candidate(license_text)
+            ):
                 class_id = rule_cls_id
                 class_name = rule_class_name
         except Exception:
