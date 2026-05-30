@@ -12,12 +12,12 @@ from flask import has_request_context, request
 from core.common import (
     CAMERA_NAME_MAP,
     classify_vehicle_from_anpr,
+    correct_plate_with_master_or_military_format,
     display_unit_for_class,
     ensure_database,
     ensure_table,
     get_vehicle_master_info,
     insert_vehicle_log_event,
-    normalize_plate_for_storage,
 )
 from project_config import get_cp_plus_camera_map
 
@@ -321,7 +321,7 @@ def normalize_event(data, event_file=None):
         or _find_text_in_picture_headers(picture, ["UnRecognise", "Unknown"])
         or ""
     ).strip().upper()
-    plate_number = normalize_plate_for_storage(plate_number)
+    plate_number, correction_reason, correction_score = correct_plate_with_master_or_military_format(plate_number)
     snap_time = (
         first_scalar(snap, TIME_KEYS)
         or first_scalar(picture, TIME_KEYS)
@@ -370,6 +370,8 @@ def normalize_event(data, event_file=None):
         "class_id": class_id,
         "class_name": class_name,
         "classification_reason": class_reason,
+        "plate_correction_reason": correction_reason,
+        "plate_correction_score": correction_score,
         "device_id": first_scalar(snap, DEVICE_KEYS) or first_scalar(data or {}, DEVICE_KEYS) or "",
         "lane": first_scalar(snap, LANE_KEYS) or first_scalar(data or {}, LANE_KEYS),
         "channel": first_scalar(plate, CHANNEL_KEYS) or first_scalar(data or {}, CHANNEL_KEYS),

@@ -27,7 +27,9 @@ if str(BACKEND) not in sys.path:
 from core.common import (  # noqa: E402
     class_from_license_rule,
     classify_vehicle_from_anpr,
+    correct_plate_with_master_or_military_format,
     is_valid_license_text,
+    military_plate_from_partial,
     normalize_match_license,
     normalize_plate_for_storage,
 )
@@ -38,6 +40,8 @@ CASES = [
     "124B141317E",
     "24B141317E1",
     "124B141317E1",
+    "14C00HM",
+    "14C0HM",
     "19B131092M",
     "119B131092M",
     "19B131092M1",
@@ -56,12 +60,17 @@ CASES = [
 
 def result_for(plate: str) -> dict:
     stored = normalize_plate_for_storage(plate)
+    corrected, correction_reason, correction_score = correct_plate_with_master_or_military_format(plate)
     match_key = normalize_match_license(plate)
     rule_class = class_from_license_rule(stored or plate)
     anpr_class = classify_vehicle_from_anpr(plate)
     return {
         "input": plate,
         "stored": stored or "UNKNOWN",
+        "corrected": corrected or "UNKNOWN",
+        "mil_fallback": military_plate_from_partial(plate) or "",
+        "correction": correction_reason,
+        "score": correction_score,
         "match_key": match_key or "NO_MATCH",
         "valid": is_valid_license_text(plate),
         "rule_class": rule_class[1] if rule_class[1] else "Unknown Veh",
@@ -72,7 +81,7 @@ def result_for(plate: str) -> dict:
 
 def print_rows(plates):
     rows = [result_for(str(plate).strip()) for plate in plates]
-    headers = ["input", "stored", "match_key", "valid", "rule_class", "anpr_class", "reason"]
+    headers = ["input", "stored", "corrected", "mil_fallback", "correction", "score", "match_key", "valid", "rule_class", "anpr_class", "reason"]
     widths = {header: max(len(header), *(len(str(row[header])) for row in rows)) for header in headers}
     print(" | ".join(header.ljust(widths[header]) for header in headers))
     print("-+-".join("-" * widths[header] for header in headers))
