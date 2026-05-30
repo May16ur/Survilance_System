@@ -71,7 +71,7 @@ function App() {
   }, [activeTab, selectedCamera, uploadRunning, cameras]);
 
   useEffect(() => {
-    if (activeTab !== "streams") return undefined;
+    if (activeTab !== "streams" && activeTab !== "logs") return undefined;
     const timer = setInterval(() => {
       setPreviewTick((value) => value + 1);
     }, 1000);
@@ -494,6 +494,10 @@ function App() {
             loadCameraLogs={loadCameraLogs}
             rows={cameraLogs}
             deleteLog={deleteLog}
+            running={running}
+            previewTick={previewTick}
+            startCamera={startCamera}
+            stopCamera={stopCamera}
           />
         )}
 

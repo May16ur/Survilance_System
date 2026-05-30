@@ -305,6 +305,49 @@ h1 {
   display: block;
 }
 
+.logs-feed-panel {
+  margin-bottom: 14px;
+  border: 1px solid #d8dee6;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.logs-feed-head {
+  min-height: 54px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #d8dee6;
+}
+
+.logs-feed-head strong,
+.logs-feed-head span {
+  display: block;
+}
+
+.logs-feed-head span {
+  color: #66717f;
+  font-size: 12px;
+}
+
+.logs-feed-head b {
+  white-space: nowrap;
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: #e7eef7;
+  color: #1f4a7a;
+}
+
+.logs-preview {
+  margin-top: 0;
+  border: 0;
+  border-radius: 0;
+  max-height: 360px;
+}
+
 .empty-preview {
   height: 100%;
   color: #bac4cf;
