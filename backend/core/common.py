@@ -572,7 +572,7 @@ def normalize_plate_for_storage(value, plate_color=""):
         return ""
     if is_civil_plate_color(plate_color):
         return v
-    return normalize_military_plate_candidate(v) or military_plate_from_partial(v) or v
+    return normalize_military_plate_candidate(v) or military_plate_from_partial(v, plate_color=plate_color) or v
 
 def _clean_match_license(value): return normalize_match_license(value)
 
@@ -639,7 +639,7 @@ def normalize_military_plate_candidate(plate):
     return ""
 
 
-def military_plate_from_partial(plate):
+def military_plate_from_partial(plate, plate_color=""):
     """Build a best-effort military plate from partial OCR.
 
     Example: 14C00HM -> 14C00000M.
@@ -651,20 +651,34 @@ def military_plate_from_partial(plate):
     if len(text) < 4:
         return ""
 
+    if is_civil_plate_color(plate_color):
+        return ""
+
     if len(text) >= 2 and text[:2] in RTO_STATE_PREFIXES:
         return ""
 
     match = re.match(r"1?(1[2-9]|2[0-6])", text)
-    if not match:
+    if match:
+        year = match.group(1)
+        rest = text[match.end():]
+        if rest.startswith("1"):
+            rest = rest[1:]
+    elif is_military_plate_color(plate_color):
+        year = os.getenv("ETCP_DEFAULT_MIL_YEAR", "24")
+        rest = text
+    else:
         return ""
 
-    year = match.group(1)
-    rest = text[match.end():]
-    if rest.startswith("1"):
-        rest = rest[1:]
+    military_color = is_military_plate_color(plate_color)
+    allowed_codes = set(MIL_THIRD_ALLOWED)
+    if is_military_plate_color(plate_color):
+        allowed_codes.update("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
-    code = next((ch for ch in rest if ch in MIL_THIRD_ALLOWED), "")
-    suffix = next((ch for ch in reversed(rest) if ch in MIL_LAST_ALLOWED), "")
+    code = next((ch for ch in rest if ch in allowed_codes), "")
+    allowed_suffixes = set(MIL_LAST_ALLOWED)
+    if military_color:
+        allowed_suffixes.update("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    suffix = next((ch for ch in reversed(rest) if ch in allowed_suffixes), "")
     if not code or not suffix:
         return ""
 
@@ -674,7 +688,11 @@ def military_plate_from_partial(plate):
     digits = "".join(ch for ch in middle if ch.isdigit())
     digits = digits[:6].ljust(6, "0")
     candidate = f"{year}{code}{digits}{suffix}"
-    return candidate if MIL_RE.fullmatch(candidate) else ""
+    if MIL_RE.fullmatch(candidate):
+        return candidate
+    if military_color and re.fullmatch(r"^(1[2-9]|2[0-6])[A-Z]\d{6}[A-Z]$", candidate):
+        return candidate
+    return ""
 
 
 def _fuzzy_score(a, b):
@@ -728,7 +746,7 @@ def correct_plate_with_master_or_military_format(value, min_score=50, plate_colo
     if matched:
         return matched, "vehicle_master_fuzzy", score
 
-    military = military_plate_from_partial(value)
+    military = military_plate_from_partial(value, plate_color=plate_color)
     if military:
         return military, "military_format_rebuild", 0
 
@@ -768,6 +786,12 @@ def is_civil_plate_color(plate_color):
     color = str(plate_color or "").upper().replace("-", " ").strip()
     color_compact = color.replace(" ", "")
     return color in CIVIL_PLATE_COLORS or color_compact in CIVIL_PLATE_COLORS
+
+
+def is_military_plate_color(plate_color):
+    color = str(plate_color or "").upper().replace("-", " ").strip()
+    color_compact = color.replace(" ", "")
+    return color in MILITARY_PLATE_COLORS or color_compact in MILITARY_PLATE_COLORS
 
 
 def classify_vehicle_from_anpr(plate, plate_color="", plate_type="", vehicle_type=""):

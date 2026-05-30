@@ -80,7 +80,7 @@ def result_for(value: str) -> dict:
         "color": color,
         "stored": stored or "UNKNOWN",
         "corrected": corrected or "UNKNOWN",
-        "mil_fallback": military_plate_from_partial(plate) or "",
+        "mil_fallback": military_plate_from_partial(plate, plate_color=color) or "",
         "correction": correction_reason,
         "score": correction_score,
         "match_key": match_key or "NO_MATCH",
