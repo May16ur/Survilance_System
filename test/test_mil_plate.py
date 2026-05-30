@@ -61,14 +61,23 @@ CASES = [
 ]
 
 
-def result_for(plate: str) -> dict:
-    stored = normalize_plate_for_storage(plate)
-    corrected, correction_reason, correction_score = correct_plate_with_master_or_military_format(plate)
+def split_input(value: str):
+    if "|" not in value:
+        return value, ""
+    plate, color = value.split("|", 1)
+    return plate.strip(), color.strip()
+
+
+def result_for(value: str) -> dict:
+    plate, color = split_input(value)
+    stored = normalize_plate_for_storage(plate, plate_color=color)
+    corrected, correction_reason, correction_score = correct_plate_with_master_or_military_format(plate, plate_color=color)
     match_key = normalize_match_license(plate)
     rule_class = class_from_license_rule(stored or plate)
-    anpr_class = classify_vehicle_from_anpr(plate)
+    anpr_class = classify_vehicle_from_anpr(plate, plate_color=color)
     return {
-        "input": plate,
+        "input": value,
+        "color": color,
         "stored": stored or "UNKNOWN",
         "corrected": corrected or "UNKNOWN",
         "mil_fallback": military_plate_from_partial(plate) or "",
@@ -84,7 +93,7 @@ def result_for(plate: str) -> dict:
 
 def print_rows(plates):
     rows = [result_for(str(plate).strip()) for plate in plates]
-    headers = ["input", "stored", "corrected", "mil_fallback", "correction", "score", "match_key", "valid", "rule_class", "anpr_class", "reason"]
+    headers = ["input", "color", "stored", "corrected", "mil_fallback", "correction", "score", "match_key", "valid", "rule_class", "anpr_class", "reason"]
     widths = {header: max(len(header), *(len(str(row[header])) for row in rows)) for header in headers}
     print(" | ".join(header.ljust(widths[header]) for header in headers))
     print("-+-".join("-" * widths[header] for header in headers))

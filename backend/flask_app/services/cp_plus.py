@@ -321,7 +321,6 @@ def normalize_event(data, event_file=None):
         or _find_text_in_picture_headers(picture, ["UnRecognise", "Unknown"])
         or ""
     ).strip().upper()
-    plate_number, correction_reason, correction_score = correct_plate_with_master_or_military_format(plate_number)
     snap_time = (
         first_scalar(snap, TIME_KEYS)
         or first_scalar(picture, TIME_KEYS)
@@ -329,6 +328,10 @@ def normalize_event(data, event_file=None):
         or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )
     plate_color = first_scalar(plate, PLATE_COLOR_KEYS) or first_scalar(picture, PLATE_COLOR_KEYS) or ""
+    plate_number, correction_reason, correction_score = correct_plate_with_master_or_military_format(
+        plate_number,
+        plate_color=plate_color,
+    )
     plate_type = first_scalar(plate, PLATE_TYPE_KEYS) or first_scalar(picture, PLATE_TYPE_KEYS) or ""
     vehicle_type = first_scalar(vehicle, VEHICLE_TYPE_KEYS) or first_scalar(picture, VEHICLE_TYPE_KEYS) or ""
     vehicle_color = first_scalar(vehicle, VEHICLE_COLOR_KEYS) or first_scalar(picture, VEHICLE_COLOR_KEYS) or ""
@@ -512,6 +515,7 @@ def store_event_in_db(normalized):
             source_type="cp_plus_anpr",
             license_img=normalized.get("license_img", ""),
             veh_img=normalized.get("veh_img", ""),
+            plate_color=normalized.get("plate_color", ""),
         )
         return result
     except Exception as e:

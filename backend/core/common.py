@@ -566,10 +566,12 @@ def normalize_match_license(value):
         return military
     return v
 
-def normalize_plate_for_storage(value):
+def normalize_plate_for_storage(value, plate_color=""):
     v = normalize_plate_text(value)
     if not v or v in {"UNKNOWN", "NONE", "NULL", "NAN"}:
         return ""
+    if is_civil_plate_color(plate_color):
+        return v
     return normalize_military_plate_candidate(v) or military_plate_from_partial(v) or v
 
 def _clean_match_license(value): return normalize_match_license(value)
@@ -711,8 +713,11 @@ def find_vehicle_master_plate_match(plate, min_score=50):
     return "", 0
 
 
-def correct_plate_with_master_or_military_format(value, min_score=50):
+def correct_plate_with_master_or_military_format(value, min_score=50, plate_color=""):
     raw = normalize_plate_text(value)
+    if is_civil_plate_color(plate_color):
+        return raw, "civil_plate_color", 100
+
     direct = normalize_military_plate_candidate(raw)
     if not direct:
         direct = raw if any(pattern.fullmatch(raw) for pattern in CIVIL_RE_LIST) else ""
@@ -759,6 +764,12 @@ RTO_STATE_PREFIXES = {
 }
 
 
+def is_civil_plate_color(plate_color):
+    color = str(plate_color or "").upper().replace("-", " ").strip()
+    color_compact = color.replace(" ", "")
+    return color in CIVIL_PLATE_COLORS or color_compact in CIVIL_PLATE_COLORS
+
+
 def classify_vehicle_from_anpr(plate, plate_color="", plate_type="", vehicle_type=""):
     """
     Fast CP Plus ANPR classification. Uses text/color metadata only; no YOLO.
@@ -779,6 +790,9 @@ def classify_vehicle_from_anpr(plate, plate_color="", plate_type="", vehicle_typ
     if raw_plate.startswith(BROAD_ARROW_MARKERS) or any(raw_plate.startswith(marker) for marker in BROAD_ARROW_MARKERS):
         return 0, "Mil Veh", "broad_arrow"
 
+    if is_civil_plate_color(plate_color):
+        return 1, "Civil Veh", "civil_plate_color"
+
     rule_cls_id, rule_class_name = class_from_license_rule(raw_plate)
     if rule_cls_id is not None:
         return rule_cls_id, rule_class_name, "plate_pattern"
@@ -794,9 +808,6 @@ def classify_vehicle_from_anpr(plate, plate_color="", plate_type="", vehicle_typ
 
     if len(norm_plate) >= 2 and norm_plate[:2] in RTO_STATE_PREFIXES:
         return 1, "Civil Veh", "rto_state_prefix"
-
-    if color in CIVIL_PLATE_COLORS or color_compact in CIVIL_PLATE_COLORS:
-        return 1, "Civil Veh", "civil_plate_color"
 
     return 2, "Unknown Veh", "no_confident_signal"
 
@@ -838,18 +849,19 @@ def insert_vehicle_log_event(
     source_type="cp_plus_anpr",
     license_img="",
     veh_img="",
+    plate_color="",
 ):
     """Insert one camera event row. Used for ANPR events that do not have stable tracker ids."""
     try:
         dt = parse_time_value(time_value)
         log_date = dt.date()
-        lic, correction_reason, correction_score = correct_plate_with_master_or_military_format(license_text)
+        lic, correction_reason, correction_score = correct_plate_with_master_or_military_format(license_text, plate_color=plate_color)
         lic = lic or "UNKNOWN"
         camera_id = _camera_id_from_name(camera_name)
 
         try:
             rule_cls_id, rule_class_name = class_from_license_rule(lic)
-            if rule_cls_id is not None:
+            if rule_cls_id is not None and not is_civil_plate_color(plate_color):
                 class_id = rule_cls_id
                 class_name = rule_class_name
         except Exception:
