@@ -3,7 +3,7 @@ import fractions
 import threading
 import time
 
-from preview_pipeline import STREAM_FPS, get_preview_frame
+from preview_pipeline import STREAM_FPS, get_preview_frame_with_time
 
 try:
     from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
@@ -44,15 +44,19 @@ class PreviewVideoTrack(VideoStreamTrack):
         self.camera_id = camera_id
         self.frame_no = 0
         self.started_at = time.time()
+        self.last_frame_time = 0.0
         self.time_base = fractions.Fraction(1, 90000)
-        self.frame_interval = max(1, int(90000 / max(1, STREAM_FPS)))
 
     async def recv(self):
-        await asyncio.sleep(1.0 / max(1, STREAM_FPS))
-        frame = get_preview_frame(self.camera_id)
+        deadline = time.time() + (1.0 / max(1, STREAM_FPS))
+        frame, frame_time = get_preview_frame_with_time(self.camera_id)
+        while frame_time and frame_time == self.last_frame_time and time.time() < deadline:
+            await asyncio.sleep(0.01)
+            frame, frame_time = get_preview_frame_with_time(self.camera_id)
+        self.last_frame_time = frame_time
         video_frame = VideoFrame.from_ndarray(frame, format="bgr24")
-        self.frame_no += 1
-        video_frame.pts = self.frame_no * self.frame_interval
+        elapsed = max(0.0, time.time() - self.started_at)
+        video_frame.pts = int(elapsed * 90000)
         video_frame.time_base = self.time_base
         return video_frame
 

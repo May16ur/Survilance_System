@@ -23,8 +23,7 @@ STREAM_SIZE = (
     max(270, min(720, int(os.getenv("PREVIEW_STREAM_HEIGHT", "360")))),
 )
 STREAM_JPEG_QUALITY = max(35, min(95, int(os.getenv("PREVIEW_STREAM_JPEG_QUALITY", "80"))))
-STREAM_FPS = max(3, min(20, int(os.getenv("PREVIEW_STREAM_FPS", "6"))))
-BUFFER_DROP_FRAMES = max(0, min(12, int(os.getenv("PREVIEW_BUFFER_DROP_FRAMES", "6"))))
+STREAM_FPS = max(3, min(20, int(os.getenv("PREVIEW_STREAM_FPS", "8"))))
 LOG_DIR = os.getenv("CAMERA_LOG_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs"))
 os.makedirs(LOG_DIR, exist_ok=True)
 PREVIEW_LOG_FILE = os.path.join(LOG_DIR, f"camera_preview_{datetime.datetime.now().strftime('%Y%m%d')}.log")
@@ -140,6 +139,7 @@ def _preview_loop(camera_id, rtsp_url):
     cap = None
     last_connect = 0
     frame_interval = 1.0 / STREAM_FPS
+    next_publish = 0.0
 
     while camera_running.get(camera_id):
         try:
@@ -163,21 +163,13 @@ def _preview_loop(camera_id, rtsp_url):
                     time.sleep(1)
                     continue
                 _log_preview(camera_id, "Connected to RTSP stream")
+                next_publish = 0.0
 
-            # Drop buffered frames so the web preview shows the newest camera frame.
-            if BUFFER_DROP_FRAMES:
-                ok = True
-                for _ in range(BUFFER_DROP_FRAMES):
-                    ok = cap.grab()
-                    if not ok:
-                        break
-                frame = None
-                if ok:
-                    ok, frame = cap.retrieve()
-            else:
-                ok, frame = cap.read()
+            # Drain the RTSP stream continuously, but only decode/publish at
+            # preview FPS. This prevents slow drift from buffered old frames.
+            ok = cap.grab()
 
-            if not ok or frame is None:
+            if not ok:
                 _log_preview(camera_id, "Failed to read frame; reconnecting", level="WARN")
                 _publish(camera_id, _blank_frame(f"Camera {camera_id} waiting for frame"))
                 cap.release()
@@ -185,8 +177,20 @@ def _preview_loop(camera_id, rtsp_url):
                 time.sleep(0.5)
                 continue
 
-            _publish(camera_id, frame)
-            time.sleep(frame_interval)
+            now = time.time()
+            if now >= next_publish:
+                ok, frame = cap.retrieve()
+                if not ok or frame is None:
+                    _log_preview(camera_id, "Failed to decode frame; reconnecting", level="WARN")
+                    _publish(camera_id, _blank_frame(f"Camera {camera_id} waiting for frame"))
+                    cap.release()
+                    cap = None
+                    time.sleep(0.5)
+                    continue
+                _publish(camera_id, frame)
+                next_publish = now + frame_interval
+            else:
+                time.sleep(0.001)
 
         except Exception as e:
             _log_preview(camera_id, str(e), level="ERROR")
@@ -234,6 +238,15 @@ def get_preview_frame(camera_id):
     if frame is not None:
         return frame.copy()
     return _blank_frame(f"Waiting for Camera {camera_id}...")
+
+
+def get_preview_frame_with_time(camera_id):
+    with frame_locks[camera_id]:
+        frame = latest_frames.get(camera_id)
+        frame_time = latest_times.get(camera_id, 0.0)
+    if frame is not None:
+        return frame.copy(), frame_time
+    return _blank_frame(f"Waiting for Camera {camera_id}..."), 0.0
 
 
 def generate_preview_frames(camera_id):
