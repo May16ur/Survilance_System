@@ -36,7 +36,6 @@ function App() {
   const [plateSearch, setPlateSearch] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [uploadRunning, setUploadRunning] = useState(false);
-  const [previewTick, setPreviewTick] = useState(0);
   const [dashboard, setDashboard] = useState(null);
   const [comparison, setComparison] = useState(null);
   const [diagnostic, setDiagnostic] = useState(null);
@@ -69,14 +68,6 @@ function App() {
     }, 5000);
     return () => clearInterval(timer);
   }, [activeTab, selectedCamera, uploadRunning, cameras]);
-
-  useEffect(() => {
-    if (activeTab !== "streams" && activeTab !== "logs") return undefined;
-    const timer = setInterval(() => {
-      setPreviewTick((value) => value + 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [activeTab]);
 
   async function refreshHealth() {
     try {
@@ -470,7 +461,6 @@ function App() {
             cameras={cameras}
             cameraStats={cameraStats}
             running={running}
-            previewTick={previewTick}
             registerAllStreams={registerAllStreams}
             saveLogs={saveLogs}
             updateCameraUrl={updateCameraUrl}
@@ -495,7 +485,6 @@ function App() {
             rows={cameraLogs}
             deleteLog={deleteLog}
             running={running}
-            previewTick={previewTick}
             startCamera={startCamera}
             stopCamera={stopCamera}
           />

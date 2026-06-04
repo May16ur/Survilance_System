@@ -9,7 +9,6 @@ export function LogsPanel({
   rows,
   deleteLog,
   running,
-  previewTick,
   startCamera,
   stopCamera,
 }) {
@@ -34,7 +33,7 @@ export function LogsPanel({
           <b>{rows?.length || 0} logs</b>
         </div>
         <div className="camera-preview logs-preview">
-          <WebRtcPreview camera={camera} running={Boolean(camera && running[camera.id])} previewTick={previewTick} />
+          <WebRtcPreview camera={camera} running={Boolean(camera && running[camera.id])} />
         </div>
       </div>
       <LogTable rows={rows} onDelete={deleteLog} />

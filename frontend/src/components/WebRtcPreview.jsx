@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera } from "lucide-react";
 
-export function WebRtcPreview({ camera, running, previewTick }) {
+export function WebRtcPreview({ camera, running }) {
   const videoRef = useRef(null);
   const peerRef = useRef(null);
   const [fallback, setFallback] = useState(false);
+  const [fallbackTick, setFallbackTick] = useState(0);
 
   useEffect(() => {
     setFallback(false);
@@ -57,22 +58,38 @@ export function WebRtcPreview({ camera, running, previewTick }) {
     };
   }, [camera?.id, running]);
 
+  useEffect(() => {
+    if (!fallback || !camera || !running) return undefined;
+    const timer = setInterval(() => {
+      setFallbackTick((value) => value + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [fallback, camera?.id, running]);
+
   if (!camera || !running) {
     return <div className="empty-preview"><Camera size={30} /> Feed stopped</div>;
   }
 
   if (fallback) {
-    return <img src={`/camera_snapshot/${camera.id}?t=${previewTick}`} alt={`${camera.name} preview`} />;
+    return (
+      <>
+        <img src={`/camera_snapshot/${camera.id}?t=${fallbackTick}`} alt={`${camera.name} preview`} />
+        <span className="preview-mode">Snapshot fallback</span>
+      </>
+    );
   }
 
   return (
-    <video
-      ref={videoRef}
-      className="webrtc-video"
-      autoPlay
-      muted
-      playsInline
-      aria-label={`${camera.name} WebRTC preview`}
-    />
+    <>
+      <video
+        ref={videoRef}
+        className="webrtc-video"
+        autoPlay
+        muted
+        playsInline
+        aria-label={`${camera.name} WebRTC preview`}
+      />
+      <span className="preview-mode">WebRTC</span>
+    </>
   );
 }

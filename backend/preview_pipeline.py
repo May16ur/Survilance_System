@@ -4,7 +4,10 @@ import threading
 import datetime
 from collections import deque
 
-os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;3000000|rw_timeout;3000000"
+os.environ.setdefault(
+    "OPENCV_FFMPEG_CAPTURE_OPTIONS",
+    "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay|stimeout;3000000|rw_timeout;3000000",
+)
 
 import cv2
 import numpy as np
@@ -16,12 +19,12 @@ DEFAULT_RTSP_URL = os.getenv(
     "rtsp://admin:Welcome%2A123@192.168.1.110:554/video/live?channel=1&subtype=0",
 )
 STREAM_SIZE = (
-    max(640, min(1280, int(os.getenv("PREVIEW_STREAM_WIDTH", "960")))),
-    max(360, min(720, int(os.getenv("PREVIEW_STREAM_HEIGHT", "540")))),
+    max(480, min(1280, int(os.getenv("PREVIEW_STREAM_WIDTH", "640")))),
+    max(270, min(720, int(os.getenv("PREVIEW_STREAM_HEIGHT", "360")))),
 )
 STREAM_JPEG_QUALITY = max(35, min(95, int(os.getenv("PREVIEW_STREAM_JPEG_QUALITY", "80"))))
-STREAM_FPS = max(3, min(20, int(os.getenv("PREVIEW_STREAM_FPS", "10"))))
-BUFFER_DROP_FRAMES = max(0, min(5, int(os.getenv("PREVIEW_BUFFER_DROP_FRAMES", "2"))))
+STREAM_FPS = max(3, min(20, int(os.getenv("PREVIEW_STREAM_FPS", "6"))))
+BUFFER_DROP_FRAMES = max(0, min(12, int(os.getenv("PREVIEW_BUFFER_DROP_FRAMES", "6"))))
 LOG_DIR = os.getenv("CAMERA_LOG_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs"))
 os.makedirs(LOG_DIR, exist_ok=True)
 PREVIEW_LOG_FILE = os.path.join(LOG_DIR, f"camera_preview_{datetime.datetime.now().strftime('%Y%m%d')}.log")
@@ -36,6 +39,7 @@ frame_locks = {i: threading.Lock() for i in range(1, MAX_CAMERAS + 1)}
 latest_jpegs = {}
 latest_frames = {}
 latest_times = {}
+latest_jpeg_frame_times = {}
 
 
 def _log_preview(camera_id, message, level="INFO"):
@@ -127,12 +131,8 @@ def _publish(camera_id, frame):
         return
     if frame.shape[1] != STREAM_SIZE[0] or frame.shape[0] != STREAM_SIZE[1]:
         frame = cv2.resize(frame, STREAM_SIZE)
-    ok, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), STREAM_JPEG_QUALITY])
-    if not ok:
-        return
     with frame_locks[camera_id]:
         latest_frames[camera_id] = frame.copy()
-        latest_jpegs[camera_id] = buffer.tobytes()
         latest_times[camera_id] = time.time()
 
 
@@ -210,12 +210,22 @@ def _preview_loop(camera_id, rtsp_url):
 def get_preview_snapshot(camera_id):
     with frame_locks[camera_id]:
         jpg = latest_jpegs.get(camera_id)
-    if jpg:
+        jpg_time = latest_jpeg_frame_times.get(camera_id)
+        frame_time = latest_times.get(camera_id)
+        frame = latest_frames.get(camera_id)
+    if jpg and jpg_time == frame_time:
         return jpg
 
-    frame = _blank_frame(f"Waiting for Camera {camera_id}...")
+    if frame is None:
+        frame = _blank_frame(f"Waiting for Camera {camera_id}...")
     ok, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), STREAM_JPEG_QUALITY])
-    return buffer.tobytes() if ok else b""
+    if not ok:
+        return b""
+    jpg = buffer.tobytes()
+    with frame_locks[camera_id]:
+        latest_jpegs[camera_id] = jpg
+        latest_jpeg_frame_times[camera_id] = frame_time
+    return jpg
 
 
 def get_preview_frame(camera_id):

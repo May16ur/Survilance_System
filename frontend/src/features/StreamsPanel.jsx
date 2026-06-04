@@ -5,7 +5,6 @@ export function StreamsPanel({
   cameras,
   cameraStats,
   running,
-  previewTick,
   registerAllStreams,
   saveLogs,
   updateCameraUrl,
@@ -32,7 +31,7 @@ export function StreamsPanel({
             </div>
             <input value={camera.url} onChange={(event) => updateCameraUrl(camera.id, event.target.value)} placeholder="RTSP URL" />
             <div className="camera-preview">
-              <WebRtcPreview camera={camera} running={running[camera.id]} previewTick={previewTick} />
+              <WebRtcPreview camera={camera} running={running[camera.id]} />
             </div>
             <div className="button-row">
               <button onClick={() => startCamera(camera)}><Play size={16} /> Start</button>
