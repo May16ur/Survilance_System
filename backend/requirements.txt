@@ -11,3 +11,5 @@ mysql-connector-python
 easyocr
 paddleocr
 reportlab
+aiortc
+av

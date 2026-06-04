@@ -26,9 +26,10 @@ app = create_app()
 CORS(app, resources={r"/*": {"origins": os.getenv("FRONTEND_ORIGIN", "*")}})
 
 if __name__ == "__main__":
+    ensure_database()
     mysql_status = check_mysql_connection(log=True)
     if mysql_status.get("connected"):
-        if ensure_database() and ensure_table():
+        if ensure_table():
             try:
                 result = import_vehicle_details_from_excel()
                 print("[APP]", result.get("message"))

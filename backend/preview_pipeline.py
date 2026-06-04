@@ -34,6 +34,7 @@ camera_threads = {}
 camera_running = {i: False for i in range(1, MAX_CAMERAS + 1)}
 frame_locks = {i: threading.Lock() for i in range(1, MAX_CAMERAS + 1)}
 latest_jpegs = {}
+latest_frames = {}
 latest_times = {}
 
 
@@ -130,6 +131,7 @@ def _publish(camera_id, frame):
     if not ok:
         return
     with frame_locks[camera_id]:
+        latest_frames[camera_id] = frame.copy()
         latest_jpegs[camera_id] = buffer.tobytes()
         latest_times[camera_id] = time.time()
 
@@ -214,6 +216,14 @@ def get_preview_snapshot(camera_id):
     frame = _blank_frame(f"Waiting for Camera {camera_id}...")
     ok, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), STREAM_JPEG_QUALITY])
     return buffer.tobytes() if ok else b""
+
+
+def get_preview_frame(camera_id):
+    with frame_locks[camera_id]:
+        frame = latest_frames.get(camera_id)
+    if frame is not None:
+        return frame.copy()
+    return _blank_frame(f"Waiting for Camera {camera_id}...")
 
 
 def generate_preview_frames(camera_id):

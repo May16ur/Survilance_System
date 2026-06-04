@@ -1,4 +1,5 @@
-import { Camera, Database, Play, RefreshCw, Save, Square } from "lucide-react";
+import { Database, Play, RefreshCw, Save, Square } from "lucide-react";
+import { WebRtcPreview } from "../components/WebRtcPreview.jsx";
 
 export function StreamsPanel({
   cameras,
@@ -31,11 +32,7 @@ export function StreamsPanel({
             </div>
             <input value={camera.url} onChange={(event) => updateCameraUrl(camera.id, event.target.value)} placeholder="RTSP URL" />
             <div className="camera-preview">
-              {running[camera.id] ? (
-                <img src={`/camera_snapshot/${camera.id}?t=${previewTick}`} alt={`${camera.name} preview`} />
-              ) : (
-                <div className="empty-preview"><Camera size={30} /> Feed stopped</div>
-              )}
+              <WebRtcPreview camera={camera} running={running[camera.id]} previewTick={previewTick} />
             </div>
             <div className="button-row">
               <button onClick={() => startCamera(camera)}><Play size={16} /> Start</button>

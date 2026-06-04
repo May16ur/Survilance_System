@@ -1,4 +1,5 @@
-import { Camera, Play, RefreshCw, Square } from "lucide-react";
+import { Play, RefreshCw, Square } from "lucide-react";
+import { WebRtcPreview } from "../components/WebRtcPreview.jsx";
 import { LogTable } from "../components/Tables.jsx";
 
 export function LogsPanel({
@@ -33,11 +34,7 @@ export function LogsPanel({
           <b>{rows?.length || 0} logs</b>
         </div>
         <div className="camera-preview logs-preview">
-          {camera && running[camera.id] ? (
-            <img src={`/camera_snapshot/${camera.id}?t=${previewTick}`} alt={`${camera.name} preview`} />
-          ) : (
-            <div className="empty-preview"><Camera size={30} /> Feed stopped</div>
-          )}
+          <WebRtcPreview camera={camera} running={Boolean(camera && running[camera.id])} previewTick={previewTick} />
         </div>
       </div>
       <LogTable rows={rows} onDelete={deleteLog} />

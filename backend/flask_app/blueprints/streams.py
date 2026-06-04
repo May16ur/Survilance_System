@@ -12,6 +12,7 @@ from preview_pipeline import (
     get_preview_snapshot,
     generate_preview_frames,
 )
+from webrtc_pipeline import WEBRTC_IMPORT_ERROR, create_webrtc_answer
 from flask_app.blueprints.route_utils import (
     UPLOAD_FOLDER,
     RTSP_PIPELINE_ERROR,
@@ -174,6 +175,30 @@ def camera_snapshot(camera_id):
             "Pragma": "no-cache",
         },
     )
+
+
+@bp.route("/webrtc/offer/<int:camera_id>", methods=["POST"])
+def webrtc_offer(camera_id):
+    if camera_id not in CAMERA_NAME_MAP:
+        return jsonify({"success": False, "message": "Invalid camera id"}), 400
+    if WEBRTC_IMPORT_ERROR is not None:
+        return jsonify({
+            "success": False,
+            "message": "WebRTC backend dependency is not installed.",
+            "error": str(WEBRTC_IMPORT_ERROR),
+        }), 503
+
+    data = request.get_json(silent=True) or {}
+    sdp = data.get("sdp")
+    offer_type = data.get("type", "offer")
+    if not sdp:
+        return jsonify({"success": False, "message": "Missing WebRTC offer SDP"}), 400
+
+    try:
+        answer = create_webrtc_answer(camera_id, sdp, offer_type=offer_type)
+        return jsonify({"success": True, **answer})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
 @bp.route("/preview/snapshot/<int:camera_id>")
