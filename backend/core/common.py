@@ -561,9 +561,6 @@ def normalize_match_license(value, plate_color=""):
     military = normalize_military_plate_candidate(v)
     if military:
         return military
-    military = military_plate_from_partial(v, plate_color=plate_color)
-    if military:
-        return military
     return v
 
 def normalize_plate_for_storage(value, plate_color=""):
@@ -572,7 +569,7 @@ def normalize_plate_for_storage(value, plate_color=""):
         return ""
     if is_civil_plate_color(plate_color):
         return v
-    return normalize_military_plate_candidate(v) or military_plate_from_partial(v, plate_color=plate_color) or v
+    return normalize_military_plate_candidate(v) or v
 
 def _clean_match_license(value): return normalize_match_license(value)
 
@@ -618,8 +615,6 @@ def finalize_license(candidates, class_id):
 
 
 MIL_RE = re.compile(r"^(1[2-9]|2[0-6])[NPAFDCB]\d{6}[PMNXYKLWHEA]$")
-MIL_THIRD_ALLOWED = set("NPAFDCB")
-MIL_LAST_ALLOWED = set("PMNXYKLWHEA")
 CIVIL_RE_LIST = [
     re.compile(r"^(JK|LA|WB|TN|CH|DL|NL|MH|MP|AP|HP|AR|PY|GA|UP|GJ|OD|BR|PB|HR|CG|KA|TS|RJ|AS|KL|UK)\d{2}[A-Z]{1,3}\d{4}$"),
     re.compile(r"^(LA|JK)\d{2}\d{4}$"),
@@ -639,62 +634,6 @@ def normalize_military_plate_candidate(plate):
     return ""
 
 
-def military_plate_from_partial(plate, plate_color=""):
-    """Build a best-effort military plate from partial OCR.
-
-    Example: 14C00HM -> 14C00000M.
-    Rule: first two digits are year, first following military alphabet is code,
-    last alphabet is suffix, and middle digits are left-filled then zero-padded
-    to six digits.
-    """
-    text = normalize_plate_text(plate or "").upper()
-    if len(text) < 4:
-        return ""
-
-    if is_civil_plate_color(plate_color):
-        return ""
-
-    if len(text) >= 2 and text[:2] in RTO_STATE_PREFIXES:
-        return ""
-
-    match = re.match(r"1?(1[2-9]|2[0-6])", text)
-    if match:
-        year = match.group(1)
-        rest = text[match.end():]
-        if rest.startswith("1"):
-            rest = rest[1:]
-    elif is_military_plate_color(plate_color):
-        year = os.getenv("ETCP_DEFAULT_MIL_YEAR", "24")
-        rest = text
-    else:
-        return ""
-
-    military_color = is_military_plate_color(plate_color)
-    allowed_codes = set(MIL_THIRD_ALLOWED)
-    if is_military_plate_color(plate_color):
-        allowed_codes.update("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-    code = next((ch for ch in rest if ch in allowed_codes), "")
-    allowed_suffixes = set(MIL_LAST_ALLOWED)
-    if military_color:
-        allowed_suffixes.update("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-    suffix = next((ch for ch in reversed(rest) if ch in allowed_suffixes), "")
-    if not code or not suffix:
-        return ""
-
-    code_index = rest.find(code)
-    suffix_index = rest.rfind(suffix)
-    middle = rest[code_index + 1:suffix_index] if suffix_index > code_index else rest[code_index + 1:]
-    digits = "".join(ch for ch in middle if ch.isdigit())
-    digits = digits[:6].ljust(6, "0")
-    candidate = f"{year}{code}{digits}{suffix}"
-    if MIL_RE.fullmatch(candidate):
-        return candidate
-    if military_color and re.fullmatch(r"^(1[2-9]|2[0-6])[A-Z]\d{6}[A-Z]$", candidate):
-        return candidate
-    return ""
-
-
 def _fuzzy_score(a, b):
     a = normalize_plate_text(a)
     b = normalize_plate_text(b)
@@ -703,8 +642,21 @@ def _fuzzy_score(a, b):
     return int(SequenceMatcher(None, a, b).ratio() * 100)
 
 
+def is_distorted_military_candidate(plate, plate_color=""):
+    text = normalize_plate_text(plate)
+    if not text:
+        return False
+    if is_civil_plate_color(plate_color):
+        return False
+    if is_military_plate_color(plate_color):
+        return True
+    if len(text) >= 2 and text[:2] in RTO_STATE_PREFIXES:
+        return False
+    return bool(re.match(r"^1?(1[2-9]|2[0-6])", text) and any(ch.isalpha() for ch in text))
+
+
 def find_vehicle_master_plate_match(plate, min_score=50):
-    """Return best vehicle_master license_norm match for noisy OCR."""
+    """Return the best valid military plate match for noisy OCR."""
     query = normalize_plate_text(plate)
     if not query:
         return "", 0
@@ -715,7 +667,7 @@ def find_vehicle_master_plate_match(plate, min_score=50):
         best_plate = ""
         best_score = 0
         for row in cur.fetchall():
-            candidate = normalize_match_license(row.get("license_norm"))
+            candidate = normalize_military_plate_candidate(row.get("license_norm"))
             if not candidate:
                 continue
             score = _fuzzy_score(query, candidate)
@@ -746,13 +698,10 @@ def correct_plate_with_master_or_military_format(value, min_score=50, plate_colo
     if direct:
         return direct, "valid_plate", 100
 
-    matched, score = find_vehicle_master_plate_match(value, min_score=min_score)
-    if matched:
-        return matched, "vehicle_master_fuzzy", score
-
-    military = military_plate_from_partial(value, plate_color=plate_color)
-    if military:
-        return military, "military_format_rebuild", 0
+    if is_distorted_military_candidate(raw, plate_color=plate_color):
+        matched, score = find_vehicle_master_plate_match(value, min_score=min_score)
+        if matched:
+            return matched, "vehicle_master_military_fuzzy", score
 
     return raw, "raw_plate", 0
 
@@ -761,13 +710,13 @@ def is_valid_license_text(plate):
     plate = normalize_plate_text(plate or "").upper()
     if not plate or plate in {"UNKNOWN", "NONE", "NULL", "NAN"}:
         return False
-    if normalize_military_plate_candidate(plate) or military_plate_from_partial(plate):
+    if normalize_military_plate_candidate(plate):
         return True
     return any(pattern.fullmatch(plate) for pattern in CIVIL_RE_LIST)
 
 def class_from_license_rule(plate):
     plate = normalize_plate_text(plate or "").upper()
-    if normalize_military_plate_candidate(plate) or military_plate_from_partial(plate):
+    if normalize_military_plate_candidate(plate):
         return 0, "Mil Veh"
     for pattern in CIVIL_RE_LIST:
         if pattern.fullmatch(plate):

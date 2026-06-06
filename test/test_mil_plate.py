@@ -29,7 +29,6 @@ from core.common import (  # noqa: E402
     classify_vehicle_from_anpr,
     correct_plate_with_master_or_military_format,
     is_valid_license_text,
-    military_plate_from_partial,
     normalize_match_license,
     normalize_plate_for_storage,
 )
@@ -80,7 +79,6 @@ def result_for(value: str) -> dict:
         "color": color,
         "stored": stored or "UNKNOWN",
         "corrected": corrected or "UNKNOWN",
-        "mil_fallback": military_plate_from_partial(plate, plate_color=color) or "",
         "correction": correction_reason,
         "score": correction_score,
         "match_key": match_key or "NO_MATCH",
@@ -93,7 +91,7 @@ def result_for(value: str) -> dict:
 
 def print_rows(plates):
     rows = [result_for(str(plate).strip()) for plate in plates]
-    headers = ["input", "color", "stored", "corrected", "mil_fallback", "correction", "score", "match_key", "valid", "rule_class", "anpr_class", "reason"]
+    headers = ["input", "color", "stored", "corrected", "correction", "score", "match_key", "valid", "rule_class", "anpr_class", "reason"]
     widths = {header: max(len(header), *(len(str(row[header])) for row in rows)) for header in headers}
     print(" | ".join(header.ljust(widths[header]) for header in headers))
     print("-+-".join("-" * widths[header] for header in headers))

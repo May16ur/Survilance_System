@@ -6,9 +6,11 @@ export function WebRtcPreview({ camera, running }) {
   const peerRef = useRef(null);
   const [fallback, setFallback] = useState(false);
   const [fallbackTick, setFallbackTick] = useState(0);
+  const [mode, setMode] = useState("WebRTC");
 
   useEffect(() => {
     setFallback(false);
+    setMode("WebRTC");
     if (!camera || !running) return undefined;
 
     let cancelled = false;
@@ -42,6 +44,9 @@ export function WebRtcPreview({ camera, running }) {
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
         const answer = await response.json();
         if (!answer.success) throw new Error(answer.message || "WebRTC failed");
+        if (answer.mode) {
+          setMode(answer.mode === "preview_frame_cache" ? "WebRTC preview cache" : "Direct RTSP WebRTC");
+        }
         await pc.setRemoteDescription({ sdp: answer.sdp, type: answer.type });
       } catch {
         if (!cancelled) setFallback(true);
@@ -89,7 +94,7 @@ export function WebRtcPreview({ camera, running }) {
         playsInline
         aria-label={`${camera.name} WebRTC preview`}
       />
-      <span className="preview-mode">WebRTC</span>
+      <span className="preview-mode">{mode}</span>
     </>
   );
 }

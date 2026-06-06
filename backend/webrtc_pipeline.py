@@ -1,16 +1,18 @@
 import asyncio
 import fractions
+import os
 import threading
 import time
 
-from preview_pipeline import STREAM_FPS, get_preview_frame_with_time
+from preview_pipeline import STREAM_FPS, get_preview_frame_with_time, get_preview_url
 
 try:
     from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
+    from aiortc.contrib.media import MediaPlayer
     from av import VideoFrame
     WEBRTC_IMPORT_ERROR = None
 except Exception as e:
-    RTCPeerConnection = RTCSessionDescription = VideoStreamTrack = VideoFrame = None
+    RTCPeerConnection = RTCSessionDescription = VideoStreamTrack = MediaPlayer = VideoFrame = None
     WEBRTC_IMPORT_ERROR = e
 
 
@@ -19,6 +21,16 @@ _pcs_lock = threading.Lock()
 _loop = None
 _loop_thread = None
 _loop_lock = threading.Lock()
+WEBRTC_MODE = os.getenv("ETCP_WEBRTC_MODE", "direct").strip().lower()
+WEBRTC_RTSP_TRANSPORT = os.getenv("ETCP_WEBRTC_RTSP_TRANSPORT", "udp").strip().lower()
+WEBRTC_RTSP_OPTIONS = {
+    "rtsp_transport": WEBRTC_RTSP_TRANSPORT,
+    "fflags": "nobuffer",
+    "flags": "low_delay",
+    "max_delay": "0",
+    "stimeout": "3000000",
+    "rw_timeout": "3000000",
+}
 
 
 def _ensure_loop():
@@ -63,6 +75,9 @@ class PreviewVideoTrack(VideoStreamTrack):
 
 async def _create_answer(camera_id, offer_sdp, offer_type):
     pc = RTCPeerConnection()
+    player = None
+    media_track = None
+    mode = "preview"
     with _pcs_lock:
         _pcs.add(pc)
 
@@ -70,15 +85,41 @@ async def _create_answer(camera_id, offer_sdp, offer_type):
     async def on_connectionstatechange():
         if pc.connectionState in ("failed", "closed", "disconnected"):
             await pc.close()
+            try:
+                if media_track is not None:
+                    media_track.stop()
+            except Exception:
+                pass
             with _pcs_lock:
                 _pcs.discard(pc)
 
-    pc.addTrack(PreviewVideoTrack(camera_id))
+    rtsp_url = get_preview_url(camera_id)
+    if WEBRTC_MODE in ("direct", "rtsp") and rtsp_url:
+        try:
+            player = MediaPlayer(
+                rtsp_url,
+                format="rtsp",
+                options=WEBRTC_RTSP_OPTIONS,
+            )
+            if player.video is not None:
+                media_track = player.video
+                pc.addTrack(media_track)
+                mode = f"direct_rtsp_{WEBRTC_RTSP_TRANSPORT}"
+            else:
+                raise RuntimeError("RTSP URL has no video track")
+        except Exception as e:
+            print(f"[WEBRTC] Direct RTSP failed for camera {camera_id}; using preview frames: {e}")
+
+    if media_track is None:
+        media_track = PreviewVideoTrack(camera_id)
+        pc.addTrack(media_track)
+        mode = "preview_frame_cache"
+
     offer = RTCSessionDescription(sdp=offer_sdp, type=offer_type)
     await pc.setRemoteDescription(offer)
     answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
-    return {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type}
+    return {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type, "mode": mode}
 
 
 def create_webrtc_answer(camera_id, offer_sdp, offer_type="offer", timeout=10):

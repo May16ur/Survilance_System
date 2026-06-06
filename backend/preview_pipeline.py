@@ -119,6 +119,10 @@ def stop_preview_camera(camera_id):
         _log_preview(camera_id, "Preview stop requested")
 
 
+def get_preview_url(camera_id):
+    return camera_urls.get(camera_id, "")
+
+
 def _blank_frame(text):
     frame = np.zeros((STREAM_SIZE[1], STREAM_SIZE[0], 3), dtype=np.uint8)
     cv2.putText(frame, text, (40, STREAM_SIZE[1] // 2), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (235, 235, 235), 2)
