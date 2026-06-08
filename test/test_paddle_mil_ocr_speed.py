@@ -404,10 +404,8 @@ def main() -> int:
             avg_ms,
             avg_ms <= budget_ms,
         )
-        if is_mil:
-            kept += 1
-        if is_mil or args.show_all or not json_mode:
-            rows.append(row)
+        kept += 1
+        rows.append(row)
         print(
             f"[{index}/{len(inputs)}] {input_path.name} "
             f"src={image_source or '-'} json={existing_plate or '-'} "
@@ -419,11 +417,11 @@ def main() -> int:
     print()
     print(f"Target FPS budget: {budget_ms:.1f} ms per OCR call")
     print(f"Mode: variants={args.variants}, paddle={'det+rec' if args.det else 'rec-only'}, repeat={args.repeat}")
-    print(f"Processed OCR images: {processed}; military rows kept: {kept}")
+    print(f"Processed OCR images: {processed}; CSV rows kept: {kept}")
     print()
     header = ("file", "event_time", "camera", "ocr_text", "corrected", "json_plate", "reason", "score", "avg_ms", "ok")
     if not rows:
-        print("No military plate OCR rows found.")
+        print("No OCR rows found.")
         if json_mode:
             output = Path(args.output) if args.output else ROOT / "test" / "mil_plate_ocr_results.csv"
             if not output.is_absolute():

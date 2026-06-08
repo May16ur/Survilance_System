@@ -214,8 +214,8 @@ def enqueue_event_plate_ocr(row_id, license_img, plate_color="", current_license
     if is_civil_plate_color(plate_color):
         return {"queued": False, "reason": "civil plate color"}
     current_rule_id, _current_rule_name = class_from_license_rule(current_license)
-    if current_rule_id == 0:
-        return {"queued": False, "reason": "already valid military plate"}
+    if current_rule_id is not None:
+        return {"queued": False, "reason": "already valid plate format"}
     _ensure_worker()
     try:
         _queue.put_nowait({

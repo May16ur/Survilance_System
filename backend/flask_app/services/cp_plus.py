@@ -12,7 +12,6 @@ from flask import has_request_context, request
 from core.common import (
     CAMERA_NAME_MAP,
     classify_vehicle_from_anpr,
-    correct_plate_with_master_or_military_format,
     display_unit_for_class,
     ensure_database,
     ensure_table,
@@ -320,7 +319,7 @@ def normalize_event(data, event_file=None):
         or first_scalar(data or {}, PLATE_KEYS)
         or _find_text_in_picture_headers(picture, ["UnRecognise", "Unknown"])
         or ""
-    ).strip().upper()
+    ).strip()
     snap_time = (
         first_scalar(snap, TIME_KEYS)
         or first_scalar(picture, TIME_KEYS)
@@ -328,10 +327,6 @@ def normalize_event(data, event_file=None):
         or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )
     plate_color = first_scalar(plate, PLATE_COLOR_KEYS) or first_scalar(picture, PLATE_COLOR_KEYS) or ""
-    plate_number, correction_reason, correction_score = correct_plate_with_master_or_military_format(
-        plate_number,
-        plate_color=plate_color,
-    )
     plate_type = first_scalar(plate, PLATE_TYPE_KEYS) or first_scalar(picture, PLATE_TYPE_KEYS) or ""
     vehicle_type = first_scalar(vehicle, VEHICLE_TYPE_KEYS) or first_scalar(picture, VEHICLE_TYPE_KEYS) or ""
     vehicle_color = first_scalar(vehicle, VEHICLE_COLOR_KEYS) or first_scalar(picture, VEHICLE_COLOR_KEYS) or ""
@@ -373,8 +368,8 @@ def normalize_event(data, event_file=None):
         "class_id": class_id,
         "class_name": class_name,
         "classification_reason": class_reason,
-        "plate_correction_reason": correction_reason,
-        "plate_correction_score": correction_score,
+        "plate_correction_reason": "raw_camera_json",
+        "plate_correction_score": 100 if plate_number else 0,
         "device_id": first_scalar(snap, DEVICE_KEYS) or first_scalar(data or {}, DEVICE_KEYS) or "",
         "lane": first_scalar(snap, LANE_KEYS) or first_scalar(data or {}, LANE_KEYS),
         "channel": first_scalar(plate, CHANNEL_KEYS) or first_scalar(data or {}, CHANNEL_KEYS),
@@ -516,6 +511,7 @@ def store_event_in_db(normalized):
             license_img=normalized.get("license_img", ""),
             veh_img=normalized.get("veh_img", ""),
             plate_color=normalized.get("plate_color", ""),
+            preserve_license_text=True,
         )
         return result
     except Exception as e:

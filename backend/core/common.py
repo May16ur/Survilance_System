@@ -8,7 +8,6 @@ import datetime
 import threading
 import time
 from collections import Counter
-from difflib import SequenceMatcher
 from xml.etree import ElementTree as ET
 
 import mysql.connector
@@ -675,55 +674,6 @@ def is_military_plate_color(plate_color):
     return color in MILITARY_PLATE_COLORS or color_compact in MILITARY_PLATE_COLORS
 
 
-def _fuzzy_score(a, b):
-    a = normalize_plate_text(a)
-    b = normalize_plate_text(b)
-    if not a or not b:
-        return 0
-    return int(SequenceMatcher(None, a, b).ratio() * 100)
-
-
-def is_distorted_military_candidate(plate, plate_color=""):
-    text = normalize_plate_text(plate)
-    if not text:
-        return False
-    if is_civil_plate_color(plate_color):
-        return False
-    if is_military_plate_color(plate_color):
-        return True
-    if len(text) >= 2 and text[:2] in RTO_STATE_PREFIXES:
-        return False
-    return bool(re.match(r"^1?(1[2-9]|2[0-6])", text) and any(ch.isalpha() for ch in text))
-
-
-def find_vehicle_master_plate_match(plate, min_score=50):
-    """Return the best valid military plate match for noisy OCR."""
-    query = normalize_plate_text(plate)
-    if not query:
-        return "", 0
-    try:
-        conn = _get_connection()
-        cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT license_norm FROM vehicle_master")
-        best_plate = ""
-        best_score = 0
-        for row in cur.fetchall():
-            candidate = normalize_military_plate_candidate(row.get("license_norm"))
-            if not candidate:
-                continue
-            score = _fuzzy_score(query, candidate)
-            if score > best_score:
-                best_plate = candidate
-                best_score = score
-        cur.close()
-        conn.close()
-        if best_score >= int(min_score):
-            return best_plate, best_score
-    except Error:
-        pass
-    return "", 0
-
-
 def correct_plate_with_master_or_military_format(plate, min_score=50, plate_color=""):
     raw = normalize_plate_text(plate)
     if not raw:
@@ -738,11 +688,6 @@ def correct_plate_with_master_or_military_format(plate, min_score=50, plate_colo
 
     if any(pattern.fullmatch(raw) for pattern in CIVIL_RE_LIST):
         return raw, "civil_plate_format", 100
-
-    if is_distorted_military_candidate(raw, plate_color=plate_color):
-        matched, score = find_vehicle_master_plate_match(raw, min_score=min_score)
-        if matched:
-            return matched, "vehicle_master_military_fuzzy", score
 
     return raw, "normalized", 0
 
@@ -827,12 +772,16 @@ def insert_vehicle_log_event(
     license_img="",
     veh_img="",
     plate_color="",
+    preserve_license_text=False,
 ):
     """Insert one camera event row. Used for ANPR events that do not have stable tracker ids."""
     try:
         dt = parse_time_value(time_value)
         log_date = dt.date()
-        lic = normalize_plate_for_storage(license_text, plate_color=plate_color) or "UNKNOWN"
+        if preserve_license_text:
+            lic = str(license_text or "").strip() or "UNKNOWN"
+        else:
+            lic = normalize_plate_for_storage(license_text, plate_color=plate_color) or "UNKNOWN"
         camera_id = _camera_id_from_name(camera_name)
 
         try:
