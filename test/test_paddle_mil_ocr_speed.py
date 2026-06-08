@@ -54,6 +54,7 @@ JSON_IMAGE_KEYS = {
     "vehiclePic",
 }
 JSON_CONTENT_KEYS = {"Content", "content", "Data", "data", "Image", "image"}
+MAX_BASE64_CHARS = int(os.getenv("ETCP_TEST_OCR_MAX_BASE64_CHARS", "3000000"))
 
 
 def iter_images(path: Path):
@@ -103,12 +104,23 @@ def recursive_find_images(obj, parent_key=""):
     return found
 
 
+def image_priority(source):
+    text = str(source or "").lower()
+    if "cutout" in text or "plate" in text:
+        return 0
+    if "vehicle" in text:
+        return 1
+    return 2
+
+
 def decode_image_content(content: str):
     text = str(content or "").strip()
     if not text:
         return None
     if "," in text and text.lower().startswith("data:"):
         text = text.split(",", 1)[1]
+    if len(text) > MAX_BASE64_CHARS:
+        return None
     try:
         raw = base64.b64decode(text, validate=False)
     except Exception:
@@ -124,8 +136,10 @@ def image_from_json_payload(payload: dict):
     if not images:
         return None, ""
     # Prefer plate/cutout image over vehicle body for OCR speed and accuracy.
-    images.sort(key=lambda item: 0 if "cutout" in item[0].lower() or "plate" in item[0].lower() else 1)
+    images.sort(key=lambda item: image_priority(item[0]))
     for source, content in images:
+        if image_priority(source) > 0:
+            continue
         img = decode_image_content(content)
         if img is not None and img.size > 0:
             return img, source
@@ -279,6 +293,7 @@ def main() -> int:
     parser.add_argument("--plate-color", default="Black", help="Plate color passed to military DB correction.")
     parser.add_argument("--det", action="store_true", help="Use Paddle detection+recognition instead of recognition-only.")
     parser.add_argument("--limit", type=int, default=0, help="Limit number of images.")
+    parser.add_argument("--show-all", action="store_true", help="Also save/print non-military OCR rows.")
     args = parser.parse_args()
 
     source_arg = args.json_folder or args.path or "backend/received"
@@ -311,12 +326,15 @@ def main() -> int:
             reader = PaddleOCR(lang="en")
     load_ms = (time.perf_counter() - start) * 1000.0
     print(f"PaddleOCR load time: {load_ms:.1f} ms")
+    print(f"Processing {len(inputs)} file(s) from: {path}")
 
     budget_ms = 1000.0 / max(0.1, args.fps)
     all_times = []
     rows = []
+    processed = 0
+    kept = 0
 
-    for input_path in inputs:
+    for index, input_path in enumerate(inputs, 1):
         payload = {}
         image_source = ""
         event_time = ""
@@ -327,8 +345,10 @@ def main() -> int:
                 payload = json.loads(input_path.read_text(encoding="utf-8"))
             except Exception as exc:
                 rows.append((input_path.name, "", "", "JSON_ERROR", str(exc), "", "", 0, 0.0, False))
+                print(f"[{index}/{len(inputs)}] {input_path.name} JSON_ERROR {exc}")
                 continue
             if not isinstance(payload, dict):
+                print(f"[{index}/{len(inputs)}] {input_path.name} skipped non-event JSON root")
                 continue
             img, image_source = image_from_json_payload(payload)
             event_time = parse_json_time(input_path, payload)
@@ -340,14 +360,10 @@ def main() -> int:
 
         variants = build_variants(img, args.variants)
         if not variants:
-            rows.append((input_path.name, event_time, camera_name, "READ_FAIL", "", existing_plate, "", 0, 0.0, False))
-            continue
-
-        # Warmup once per image shape to avoid counting first-call setup.
-        try:
-            run_ocr(reader, variants[0], recognition_only=not args.det)
-        except Exception as exc:
-            rows.append((input_path.name, event_time, camera_name, "OCR_ERROR", str(exc), existing_plate, "", 0, 0.0, False))
+            row = (input_path.name, event_time, camera_name, "READ_FAIL", "", existing_plate, image_source or "no_plate_image", 0, 0.0, False)
+            if args.show_all:
+                rows.append(row)
+            print(f"[{index}/{len(inputs)}] {input_path.name} READ_FAIL source={image_source or 'none'} json_plate={existing_plate}")
             continue
 
         image_times = []
@@ -369,9 +385,8 @@ def main() -> int:
         avg_ms = statistics.mean(image_times)
         rule_id, _rule_name = class_from_license_rule(corrected)
         is_mil = rule_id == 0
-        if json_mode and not is_mil:
-            continue
-        rows.append((
+        processed += 1
+        row = (
             input_path.name,
             event_time,
             camera_name,
@@ -382,11 +397,23 @@ def main() -> int:
             score,
             avg_ms,
             avg_ms <= budget_ms,
-        ))
+        )
+        if is_mil:
+            kept += 1
+        if is_mil or args.show_all or not json_mode:
+            rows.append(row)
+        print(
+            f"[{index}/{len(inputs)}] {input_path.name} "
+            f"src={image_source or '-'} json={existing_plate or '-'} "
+            f"ocr={text or 'NO_TEXT'} corrected={corrected or '-'} "
+            f"{'MIL' if is_mil else 'SKIP'} {reason} {avg_ms:.1f}ms",
+            flush=True,
+        )
 
     print()
     print(f"Target FPS budget: {budget_ms:.1f} ms per OCR call")
     print(f"Mode: variants={args.variants}, paddle={'det+rec' if args.det else 'rec-only'}, repeat={args.repeat}")
+    print(f"Processed OCR images: {processed}; military rows kept: {kept}")
     print()
     header = ("file", "event_time", "camera", "ocr_text", "corrected", "json_plate", "reason", "score", "avg_ms", "ok")
     if not rows:
