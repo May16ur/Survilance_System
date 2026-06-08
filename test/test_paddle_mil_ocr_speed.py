@@ -76,6 +76,8 @@ def iter_json_files(path: Path):
 
 
 def parse_json_time(path: Path, payload: dict):
+    if not isinstance(payload, dict):
+        return path.stem
     received_at = str(payload.get("received_at") or "")
     if received_at:
         return received_at
@@ -116,6 +118,8 @@ def decode_image_content(content: str):
 
 
 def image_from_json_payload(payload: dict):
+    if not isinstance(payload, dict):
+        return None, ""
     images = recursive_find_images(payload)
     if not images:
         return None, ""
@@ -129,6 +133,8 @@ def image_from_json_payload(payload: dict):
 
 
 def json_existing_plate(payload: dict):
+    if not isinstance(payload, dict):
+        return ""
     parsed = payload.get("parsed") if isinstance(payload.get("parsed"), dict) else {}
     if parsed:
         return str(parsed.get("license") or parsed.get("plate_number") or "")
@@ -297,9 +303,12 @@ def main() -> int:
     from paddleocr import PaddleOCR
 
     try:
-        reader = PaddleOCR(use_angle_cls=False, lang="en")
+        reader = PaddleOCR(use_textline_orientation=False, lang="en")
     except Exception:
-        reader = PaddleOCR(lang="en")
+        try:
+            reader = PaddleOCR(use_angle_cls=False, lang="en")
+        except Exception:
+            reader = PaddleOCR(lang="en")
     load_ms = (time.perf_counter() - start) * 1000.0
     print(f"PaddleOCR load time: {load_ms:.1f} ms")
 
@@ -318,6 +327,8 @@ def main() -> int:
                 payload = json.loads(input_path.read_text(encoding="utf-8"))
             except Exception as exc:
                 rows.append((input_path.name, "", "", "JSON_ERROR", str(exc), "", "", 0, 0.0, False))
+                continue
+            if not isinstance(payload, dict):
                 continue
             img, image_source = image_from_json_payload(payload)
             event_time = parse_json_time(input_path, payload)
