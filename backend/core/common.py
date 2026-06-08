@@ -692,6 +692,99 @@ def correct_plate_with_master_or_military_format(plate, min_score=50, plate_colo
     return raw, "normalized", 0
 
 
+PLATE_CONFUSABLE_GROUPS = (
+    frozenset(("0", "O", "D", "Q")),
+    frozenset(("8", "B")),
+    frozenset(("1", "I", "L")),
+    frozenset(("5", "S")),
+    frozenset(("2", "Z")),
+    frozenset(("6", "G")),
+)
+
+
+def _plate_chars_are_confusable(left, right):
+    if left == right:
+        return True
+    return any(left in group and right in group for group in PLATE_CONFUSABLE_GROUPS)
+
+
+def confusable_plate_match_score(observed_plate, database_plate, max_changes=2):
+    observed = normalize_plate_text(observed_plate)
+    expected = normalize_military_plate_candidate(database_plate)
+    if not observed or not expected or len(observed) != len(expected):
+        return 0
+
+    changes = 0
+    for observed_char, expected_char in zip(observed, expected):
+        if observed_char == expected_char:
+            continue
+        if not _plate_chars_are_confusable(observed_char, expected_char):
+            return 0
+        changes += 1
+
+    if changes == 0 or changes > int(max_changes):
+        return 0
+    return int(round(((len(observed) - changes) / len(observed)) * 100))
+
+
+def find_confusable_military_master_match(plate, min_score=85, max_changes=2):
+    """
+    Match invalid OCR text against exact military plates in vehicle_master.
+
+    This is deliberately not general fuzzy matching. Characters may differ only
+    inside known OCR-confusable groups, the best candidate must be unique, and
+    the final candidate must be a valid military plate.
+    """
+    query = normalize_plate_text(plate)
+    if not query:
+        return "", 0
+
+    try:
+        conn = _get_connection()
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            """
+            SELECT license_plate, license_norm
+            FROM vehicle_master
+            WHERE CHAR_LENGTH(license_norm) = %s
+            """,
+            (len(query),),
+        )
+
+        matches = []
+        for row in cur.fetchall():
+            candidate = normalize_military_plate_candidate(
+                row.get("license_norm") or row.get("license_plate") or ""
+            )
+            if not candidate or len(candidate) != len(query):
+                continue
+
+            score = confusable_plate_match_score(query, candidate, max_changes=max_changes)
+            if score >= int(min_score):
+                changes = len(query) - int(round((score / 100) * len(query)))
+                matches.append((changes, -score, candidate, score))
+
+        cur.close()
+        conn.close()
+    except Error as e:
+        print("[EVENT OCR] vehicle master ambiguity check skipped:", e)
+        return "", 0
+
+    if not matches:
+        return "", 0
+
+    matches.sort()
+    best_changes, _neg_score, best_plate, best_score = matches[0]
+    equally_likely = {
+        candidate
+        for changes, neg_score, candidate, _score in matches
+        if changes == best_changes and neg_score == _neg_score
+    }
+    if len(equally_likely) != 1:
+        return "", 0
+    return best_plate, best_score
+
+
 def classify_vehicle_from_anpr(plate, plate_color="", plate_type="", vehicle_type=""):
     """
     Fast CP Plus ANPR classification. Uses text/color metadata only; no YOLO.

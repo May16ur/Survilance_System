@@ -10,6 +10,7 @@ import numpy as np
 from core.common import (
     class_from_license_rule,
     correct_plate_with_master_or_military_format,
+    find_confusable_military_master_match,
     is_civil_plate_color,
     normalize_plate_text,
     update_vehicle_log_plate_from_ocr,
@@ -21,6 +22,8 @@ STATIC_PREFIX = "/static/"
 OCR_ENABLED = os.getenv("ETCP_EVENT_PLATE_OCR", "1").strip().lower() in ("1", "true", "yes", "on")
 OCR_QUEUE_MAX = max(1, int(os.getenv("ETCP_EVENT_PLATE_OCR_QUEUE_MAX", "200")))
 OCR_MIN_SCORE = int(os.getenv("ETCP_EVENT_PLATE_OCR_MIN_SCORE", "50"))
+OCR_MASTER_MATCH_MIN_SCORE = int(os.getenv("ETCP_EVENT_PLATE_OCR_MASTER_MIN_SCORE", "85"))
+OCR_MASTER_MATCH_MAX_CHANGES = int(os.getenv("ETCP_EVENT_PLATE_OCR_MASTER_MAX_CHANGES", "2"))
 
 _queue = queue.Queue(maxsize=OCR_QUEUE_MAX)
 _worker_started = False
@@ -173,10 +176,23 @@ def _worker():
                 plate_color=task.get("plate_color") or "Black",
             )
             rule_id, _rule_name = class_from_license_rule(corrected)
+
+            if rule_id != 0:
+                master_match, master_score = find_confusable_military_master_match(
+                    raw_text,
+                    min_score=OCR_MASTER_MATCH_MIN_SCORE,
+                    max_changes=OCR_MASTER_MATCH_MAX_CHANGES,
+                )
+                if master_match:
+                    corrected = master_match
+                    reason = "vehicle_master_confusable_exact"
+                    score = master_score
+                    rule_id = 0
+
             elapsed_ms = (time.perf_counter() - started) * 1000
 
             if rule_id != 0:
-                print(f"[EVENT OCR] no military correction row={row_id} raw={raw_text} {elapsed_ms:.0f}ms")
+                print(f"[EVENT OCR] no exact military match row={row_id} raw={raw_text} {elapsed_ms:.0f}ms")
                 continue
 
             update_vehicle_log_plate_from_ocr(
