@@ -3,7 +3,7 @@
 Examples:
     python test/test_paddle_mil_ocr_speed.py --path backend/flask_app/static/anpr --fps 5
     python test/test_paddle_mil_ocr_speed.py --path C:\plates --repeat 3 --variants fast
-    python test/test_paddle_mil_ocr_speed.py --path plate.jpg --plate-color Black
+    python test/test_paddle_mil_ocr_speed.py --path plate.jpg
 
 Notes:
     - This imports PaddleOCR directly and does not import the YOLO plate detector.
@@ -37,8 +37,6 @@ import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 
 from core.common import (  # noqa: E402
-    class_from_license_rule,
-    correct_plate_with_master_or_military_format,
     normalize_plate_text,
 )
 
@@ -296,7 +294,6 @@ def main() -> int:
     parser.add_argument("--repeat", type=int, default=1, help="OCR repeats per image after warmup.")
     parser.add_argument("--fps", type=float, default=5.0, help="Target live FPS to compare against.")
     parser.add_argument("--variants", choices=("fast", "balanced"), default="fast", help="fast=1 variant, balanced=3 variants.")
-    parser.add_argument("--plate-color", default="Black", help="Plate color passed to military DB correction.")
     parser.add_argument("--det", action="store_true", help="Use Paddle detection+recognition instead of recognition-only.")
     parser.add_argument("--limit", type=int, default=0, help="Limit number of images.")
     parser.add_argument("--show-all", action="store_true", help="Also save/print non-military OCR rows.")
@@ -366,7 +363,7 @@ def main() -> int:
 
         variants = build_variants(img, args.variants)
         if not variants:
-            row = (input_path.name, event_time, camera_name, "READ_FAIL", "", existing_plate, image_source or "no_plate_image", 0, 0.0, False)
+            row = (input_path.name, event_time, camera_name, "READ_FAIL", existing_plate, image_source or "no_plate_image", 0.0, False)
             if args.show_all:
                 rows.append(row)
             print(f"[{index}/{len(inputs)}] {input_path.name} READ_FAIL source={image_source or 'none'} json_plate={existing_plate}")
@@ -384,23 +381,15 @@ def main() -> int:
             all_times.append(elapsed_ms)
 
         text = best_text(raw_outputs)
-        corrected, reason, score = correct_plate_with_master_or_military_format(
-            text,
-            plate_color=args.plate_color,
-        )
         avg_ms = statistics.mean(image_times)
-        rule_id, _rule_name = class_from_license_rule(corrected)
-        is_mil = rule_id == 0
         processed += 1
         row = (
             input_path.name,
             event_time,
             camera_name,
             text or "NO_TEXT",
-            corrected or "",
             existing_plate,
-            reason,
-            score,
+            image_source or "",
             avg_ms,
             avg_ms <= budget_ms,
         )
@@ -409,8 +398,7 @@ def main() -> int:
         print(
             f"[{index}/{len(inputs)}] {input_path.name} "
             f"src={image_source or '-'} json={existing_plate or '-'} "
-            f"ocr={text or 'NO_TEXT'} corrected={corrected or '-'} "
-            f"{'MIL' if is_mil else 'SKIP'} {reason} {avg_ms:.1f}ms",
+            f"ocr={text or 'NO_TEXT'} {avg_ms:.1f}ms",
             flush=True,
         )
 
@@ -419,7 +407,7 @@ def main() -> int:
     print(f"Mode: variants={args.variants}, paddle={'det+rec' if args.det else 'rec-only'}, repeat={args.repeat}")
     print(f"Processed OCR images: {processed}; CSV rows kept: {kept}")
     print()
-    header = ("file", "event_time", "camera", "ocr_text", "corrected", "json_plate", "reason", "score", "avg_ms", "ok")
+    header = ("file", "event_time", "camera", "ocr_text", "json_plate", "image_source", "avg_ms", "ok")
     if not rows:
         print("No OCR rows found.")
         if json_mode:
@@ -437,9 +425,8 @@ def main() -> int:
     print("-+-".join("-" * width for width in widths))
     for row in rows:
         printable = list(row)
-        printable[7] = str(printable[7])
-        printable[8] = f"{float(printable[8]):.1f}"
-        printable[9] = "YES" if printable[9] else "NO"
+        printable[6] = f"{float(printable[6]):.1f}"
+        printable[7] = "YES" if printable[7] else "NO"
         print(" | ".join(str(printable[i]).ljust(widths[i]) for i in range(len(header))))
 
     if json_mode:
