@@ -785,6 +785,69 @@ def find_confusable_military_master_match(plate, min_score=85, max_changes=2):
     return best_plate, best_score
 
 
+def _six_digit_windows(value):
+    text = normalize_plate_text(value)
+    digits = "".join(ch if ch.isdigit() else " " for ch in text)
+    windows = set()
+    for run in digits.split():
+        if len(run) < 6:
+            continue
+        for idx in range(0, len(run) - 5):
+            windows.add(run[idx:idx + 6])
+    return windows
+
+
+def military_serial_from_plate(plate):
+    military = normalize_military_plate_candidate(plate)
+    if not military:
+        return ""
+    return military[3:9]
+
+
+def find_unique_military_serial_master_match(plate):
+    """
+    Match OCR text by the 6-digit military serial in vehicle_master.
+
+    The serial between the two military plate letters is treated as an identity
+    signal only when it maps to exactly one valid military plate in the master DB.
+    """
+    serials = _six_digit_windows(plate)
+    if not serials:
+        return "", 0
+
+    try:
+        conn = _get_connection()
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT license_plate, license_norm FROM vehicle_master")
+
+        by_serial = {}
+        for row in cur.fetchall():
+            candidate = normalize_military_plate_candidate(
+                row.get("license_norm") or row.get("license_plate") or ""
+            )
+            if not candidate:
+                continue
+            serial = military_serial_from_plate(candidate)
+            if serial:
+                by_serial.setdefault(serial, set()).add(candidate)
+
+        cur.close()
+        conn.close()
+    except Error as e:
+        print("[EVENT OCR] vehicle master serial check skipped:", e)
+        return "", 0
+
+    matches = set()
+    for serial in serials:
+        candidates = by_serial.get(serial) or set()
+        if len(candidates) == 1:
+            matches.update(candidates)
+
+    if len(matches) != 1:
+        return "", 0
+    return next(iter(matches)), 100
+
+
 def classify_vehicle_from_anpr(plate, plate_color="", plate_type="", vehicle_type=""):
     """
     Fast CP Plus ANPR classification. Uses text/color metadata only; no YOLO.

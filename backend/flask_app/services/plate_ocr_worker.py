@@ -11,6 +11,7 @@ from core.common import (
     class_from_license_rule,
     correct_plate_with_master_or_military_format,
     find_confusable_military_master_match,
+    find_unique_military_serial_master_match,
     is_civil_plate_color,
     normalize_plate_text,
     update_vehicle_log_plate_from_ocr,
@@ -187,6 +188,14 @@ def _worker():
                     corrected = master_match
                     reason = "vehicle_master_confusable_exact"
                     score = master_score
+                    rule_id = 0
+
+            if rule_id != 0:
+                serial_match, serial_score = find_unique_military_serial_master_match(raw_text)
+                if serial_match:
+                    corrected = serial_match
+                    reason = "vehicle_master_unique_serial"
+                    score = serial_score
                     rule_id = 0
 
             elapsed_ms = (time.perf_counter() - started) * 1000
