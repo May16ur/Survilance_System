@@ -8,7 +8,6 @@ import datetime
 import threading
 import time
 from collections import Counter
-from difflib import SequenceMatcher
 from xml.etree import ElementTree as ET
 
 import mysql.connector
@@ -110,7 +109,7 @@ def get_camera_aliases(camera_name):
 
 MYSQL_CONFIG = {
     "host": os.getenv("MYSQL_HOST", "localhost"),
-    "user": os.getenv("MYSQL_USER", ""),
+    "user": os.getenv("MYSQL_USER", "root"),
     "password": os.getenv("MYSQL_PASSWORD", ""),
     "database": os.getenv("MYSQL_DATABASE", "vehicle_logsnew"),
     "port": int(os.getenv("MYSQL_PORT", "3306")),
@@ -555,7 +554,7 @@ def normalize_plate_text(txt: str) -> str:
     if not txt: return ""
     return "".join(ch for ch in str(txt).upper().strip() if ch.isalnum())
 
-def normalize_match_license(value, plate_color=""):
+def normalize_match_license(value):
     v = normalize_plate_text(value)
     if not v or v in {"UNKNOWN", "NONE", "NULL", "NAN"} or len(v) < 5: return ""
     military = normalize_military_plate_candidate(v)
@@ -563,13 +562,37 @@ def normalize_match_license(value, plate_color=""):
         return military
     return v
 
-def normalize_plate_for_storage(value, plate_color=""):
+def normalize_plate_for_storage(value):
     v = normalize_plate_text(value)
     if not v or v in {"UNKNOWN", "NONE", "NULL", "NAN"}:
         return ""
-    if is_civil_plate_color(plate_color):
-        return v
     return normalize_military_plate_candidate(v) or v
+
+def correct_plate_with_master_or_military_format(plate, plate_color=""):
+    """
+    Clean CP Plus plate text and prefer canonical values already known locally.
+
+    Returns (plate, reason, score), matching the CP Plus service contract.
+    """
+    raw = str(plate or "").strip().upper()
+    cleaned = normalize_plate_for_storage(raw)
+    if not cleaned:
+        return "", "empty_plate", 0
+
+    military = normalize_military_plate_candidate(cleaned)
+    if military:
+        return military, "military_format", 100
+
+    try:
+        master = get_vehicle_master_info(cleaned)
+    except Exception:
+        master = None
+    if master and master.get("license_plate"):
+        master_plate = normalize_plate_for_storage(master.get("license_plate"))
+        if master_plate:
+            return master_plate, "vehicle_master", 100
+
+    return cleaned, "normalized", 0
 
 def _clean_match_license(value): return normalize_match_license(value)
 
@@ -634,78 +657,6 @@ def normalize_military_plate_candidate(plate):
     return ""
 
 
-def _fuzzy_score(a, b):
-    a = normalize_plate_text(a)
-    b = normalize_plate_text(b)
-    if not a or not b:
-        return 0
-    return int(SequenceMatcher(None, a, b).ratio() * 100)
-
-
-def is_distorted_military_candidate(plate, plate_color=""):
-    text = normalize_plate_text(plate)
-    if not text:
-        return False
-    if is_civil_plate_color(plate_color):
-        return False
-    if is_military_plate_color(plate_color):
-        return True
-    if len(text) >= 2 and text[:2] in RTO_STATE_PREFIXES:
-        return False
-    return bool(re.match(r"^1?(1[2-9]|2[0-6])", text) and any(ch.isalpha() for ch in text))
-
-
-def find_vehicle_master_plate_match(plate, min_score=50):
-    """Return the best valid military plate match for noisy OCR."""
-    query = normalize_plate_text(plate)
-    if not query:
-        return "", 0
-    try:
-        conn = _get_connection()
-        cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT license_norm FROM vehicle_master")
-        best_plate = ""
-        best_score = 0
-        for row in cur.fetchall():
-            candidate = normalize_military_plate_candidate(row.get("license_norm"))
-            if not candidate:
-                continue
-            score = _fuzzy_score(query, candidate)
-            if score > best_score:
-                best_plate = candidate
-                best_score = score
-        cur.close()
-        conn.close()
-        if best_score >= int(min_score):
-            return best_plate, best_score
-    except Error:
-        pass
-    return "", 0
-
-
-def correct_plate_with_master_or_military_format(value, min_score=50, plate_color=""):
-    raw = normalize_plate_text(value)
-    strong_military = normalize_military_plate_candidate(raw)
-    if strong_military:
-        return strong_military, "valid_plate", 100
-
-    if is_civil_plate_color(plate_color):
-        return raw, "civil_plate_color", 100
-
-    direct = strong_military
-    if not direct:
-        direct = raw if any(pattern.fullmatch(raw) for pattern in CIVIL_RE_LIST) else ""
-    if direct:
-        return direct, "valid_plate", 100
-
-    if is_distorted_military_candidate(raw, plate_color=plate_color):
-        matched, score = find_vehicle_master_plate_match(value, min_score=min_score)
-        if matched:
-            return matched, "vehicle_master_military_fuzzy", score
-
-    return raw, "raw_plate", 0
-
-
 def is_valid_license_text(plate):
     plate = normalize_plate_text(plate or "").upper()
     if not plate or plate in {"UNKNOWN", "NONE", "NULL", "NAN"}:
@@ -735,18 +686,6 @@ RTO_STATE_PREFIXES = {
 }
 
 
-def is_civil_plate_color(plate_color):
-    color = str(plate_color or "").upper().replace("-", " ").strip()
-    color_compact = color.replace(" ", "")
-    return color in CIVIL_PLATE_COLORS or color_compact in CIVIL_PLATE_COLORS
-
-
-def is_military_plate_color(plate_color):
-    color = str(plate_color or "").upper().replace("-", " ").strip()
-    color_compact = color.replace(" ", "")
-    return color in MILITARY_PLATE_COLORS or color_compact in MILITARY_PLATE_COLORS
-
-
 def classify_vehicle_from_anpr(plate, plate_color="", plate_type="", vehicle_type=""):
     """
     Fast CP Plus ANPR classification. Uses text/color metadata only; no YOLO.
@@ -767,12 +706,6 @@ def classify_vehicle_from_anpr(plate, plate_color="", plate_type="", vehicle_typ
     if raw_plate.startswith(BROAD_ARROW_MARKERS) or any(raw_plate.startswith(marker) for marker in BROAD_ARROW_MARKERS):
         return 0, "Mil Veh", "broad_arrow"
 
-    if normalize_military_plate_candidate(raw_plate):
-        return 0, "Mil Veh", "plate_pattern"
-
-    if is_civil_plate_color(plate_color):
-        return 1, "Civil Veh", "civil_plate_color"
-
     rule_cls_id, rule_class_name = class_from_license_rule(raw_plate)
     if rule_cls_id is not None:
         return rule_cls_id, rule_class_name, "plate_pattern"
@@ -788,6 +721,9 @@ def classify_vehicle_from_anpr(plate, plate_color="", plate_type="", vehicle_typ
 
     if len(norm_plate) >= 2 and norm_plate[:2] in RTO_STATE_PREFIXES:
         return 1, "Civil Veh", "rto_state_prefix"
+
+    if color in CIVIL_PLATE_COLORS or color_compact in CIVIL_PLATE_COLORS:
+        return 1, "Civil Veh", "civil_plate_color"
 
     return 2, "Unknown Veh", "no_confident_signal"
 
@@ -829,22 +765,17 @@ def insert_vehicle_log_event(
     source_type="cp_plus_anpr",
     license_img="",
     veh_img="",
-    plate_color="",
 ):
     """Insert one camera event row. Used for ANPR events that do not have stable tracker ids."""
     try:
         dt = parse_time_value(time_value)
         log_date = dt.date()
-        lic, correction_reason, correction_score = correct_plate_with_master_or_military_format(license_text, plate_color=plate_color)
-        lic = lic or "UNKNOWN"
+        lic = normalize_plate_for_storage(license_text) or "UNKNOWN"
         camera_id = _camera_id_from_name(camera_name)
 
         try:
             rule_cls_id, rule_class_name = class_from_license_rule(lic)
-            if rule_cls_id is not None and (
-                not is_civil_plate_color(plate_color)
-                or normalize_military_plate_candidate(license_text)
-            ):
+            if rule_cls_id is not None:
                 class_id = rule_cls_id
                 class_name = rule_class_name
         except Exception:
@@ -944,8 +875,7 @@ def upsert_vehicle_log(
         dt = parse_time_value(time_value)
         log_date = dt.date()
 
-        lic, correction_reason, correction_score = correct_plate_with_master_or_military_format(license_text)
-        lic = lic or "UNKNOWN"
+        lic = normalize_plate_for_storage(license_text) or "UNKNOWN"
         lic_upper = lic.upper()
         new_license_good = is_valid_license_text(lic_upper)
 
