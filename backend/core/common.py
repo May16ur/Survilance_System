@@ -8,6 +8,7 @@ import datetime
 import threading
 import time
 from collections import Counter
+from difflib import SequenceMatcher
 from xml.etree import ElementTree as ET
 
 import mysql.connector
@@ -554,7 +555,7 @@ def normalize_plate_text(txt: str) -> str:
     if not txt: return ""
     return "".join(ch for ch in str(txt).upper().strip() if ch.isalnum())
 
-def normalize_match_license(value):
+def normalize_match_license(value, plate_color=""):
     v = normalize_plate_text(value)
     if not v or v in {"UNKNOWN", "NONE", "NULL", "NAN"} or len(v) < 5: return ""
     military = normalize_military_plate_candidate(v)
@@ -562,37 +563,13 @@ def normalize_match_license(value):
         return military
     return v
 
-def normalize_plate_for_storage(value):
+def normalize_plate_for_storage(value, plate_color=""):
     v = normalize_plate_text(value)
     if not v or v in {"UNKNOWN", "NONE", "NULL", "NAN"}:
         return ""
+    if is_civil_plate_color(plate_color):
+        return v
     return normalize_military_plate_candidate(v) or v
-
-def correct_plate_with_master_or_military_format(plate, plate_color=""):
-    """
-    Clean CP Plus plate text and prefer canonical values already known locally.
-
-    Returns (plate, reason, score), matching the CP Plus service contract.
-    """
-    raw = str(plate or "").strip().upper()
-    cleaned = normalize_plate_for_storage(raw)
-    if not cleaned:
-        return "", "empty_plate", 0
-
-    military = normalize_military_plate_candidate(cleaned)
-    if military:
-        return military, "military_format", 100
-
-    try:
-        master = get_vehicle_master_info(cleaned)
-    except Exception:
-        master = None
-    if master and master.get("license_plate"):
-        master_plate = normalize_plate_for_storage(master.get("license_plate"))
-        if master_plate:
-            return master_plate, "vehicle_master", 100
-
-    return cleaned, "normalized", 0
 
 def _clean_match_license(value): return normalize_match_license(value)
 
@@ -686,6 +663,90 @@ RTO_STATE_PREFIXES = {
 }
 
 
+def is_civil_plate_color(plate_color):
+    color = str(plate_color or "").upper().replace("-", " ").strip()
+    color_compact = color.replace(" ", "")
+    return color in CIVIL_PLATE_COLORS or color_compact in CIVIL_PLATE_COLORS
+
+
+def is_military_plate_color(plate_color):
+    color = str(plate_color or "").upper().replace("-", " ").strip()
+    color_compact = color.replace(" ", "")
+    return color in MILITARY_PLATE_COLORS or color_compact in MILITARY_PLATE_COLORS
+
+
+def _fuzzy_score(a, b):
+    a = normalize_plate_text(a)
+    b = normalize_plate_text(b)
+    if not a or not b:
+        return 0
+    return int(SequenceMatcher(None, a, b).ratio() * 100)
+
+
+def is_distorted_military_candidate(plate, plate_color=""):
+    text = normalize_plate_text(plate)
+    if not text:
+        return False
+    if is_civil_plate_color(plate_color):
+        return False
+    if is_military_plate_color(plate_color):
+        return True
+    if len(text) >= 2 and text[:2] in RTO_STATE_PREFIXES:
+        return False
+    return bool(re.match(r"^1?(1[2-9]|2[0-6])", text) and any(ch.isalpha() for ch in text))
+
+
+def find_vehicle_master_plate_match(plate, min_score=50):
+    """Return the best valid military plate match for noisy OCR."""
+    query = normalize_plate_text(plate)
+    if not query:
+        return "", 0
+    try:
+        conn = _get_connection()
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT license_norm FROM vehicle_master")
+        best_plate = ""
+        best_score = 0
+        for row in cur.fetchall():
+            candidate = normalize_military_plate_candidate(row.get("license_norm"))
+            if not candidate:
+                continue
+            score = _fuzzy_score(query, candidate)
+            if score > best_score:
+                best_plate = candidate
+                best_score = score
+        cur.close()
+        conn.close()
+        if best_score >= int(min_score):
+            return best_plate, best_score
+    except Error:
+        pass
+    return "", 0
+
+
+def correct_plate_with_master_or_military_format(plate, min_score=50, plate_color=""):
+    raw = normalize_plate_text(plate)
+    if not raw:
+        return "", "empty_plate", 0
+
+    military = normalize_military_plate_candidate(raw)
+    if military:
+        return military, "military_format", 100
+
+    if is_civil_plate_color(plate_color):
+        return raw, "civil_plate_color", 100
+
+    if any(pattern.fullmatch(raw) for pattern in CIVIL_RE_LIST):
+        return raw, "civil_plate_format", 100
+
+    if is_distorted_military_candidate(raw, plate_color=plate_color):
+        matched, score = find_vehicle_master_plate_match(raw, min_score=min_score)
+        if matched:
+            return matched, "vehicle_master_military_fuzzy", score
+
+    return raw, "normalized", 0
+
+
 def classify_vehicle_from_anpr(plate, plate_color="", plate_type="", vehicle_type=""):
     """
     Fast CP Plus ANPR classification. Uses text/color metadata only; no YOLO.
@@ -765,12 +826,13 @@ def insert_vehicle_log_event(
     source_type="cp_plus_anpr",
     license_img="",
     veh_img="",
+    plate_color="",
 ):
     """Insert one camera event row. Used for ANPR events that do not have stable tracker ids."""
     try:
         dt = parse_time_value(time_value)
         log_date = dt.date()
-        lic = normalize_plate_for_storage(license_text) or "UNKNOWN"
+        lic = normalize_plate_for_storage(license_text, plate_color=plate_color) or "UNKNOWN"
         camera_id = _camera_id_from_name(camera_name)
 
         try:
@@ -845,6 +907,76 @@ def insert_vehicle_log_event(
     except Exception as e:
         print("MySQL event insert error:", e)
         return {"success": False, "message": str(e)}
+
+
+def update_vehicle_log_plate_from_ocr(row_id, license_text, plate_color="", reason="paddle_plate_ocr", score=0):
+    """Update one event row after background OCR finds a valid military plate."""
+    try:
+        lic = normalize_plate_for_storage(license_text, plate_color=plate_color) or ""
+        if not lic or lic.upper() == "UNKNOWN":
+            return {"success": False, "updated": 0, "message": "empty OCR license"}
+
+        rule_cls_id, rule_class_name = class_from_license_rule(lic)
+        if rule_cls_id != 0:
+            return {"success": False, "updated": 0, "message": "OCR license is not military"}
+
+        with db_lock:
+            conn = _get_connection()
+            cur = conn.cursor(dictionary=True)
+            cur.execute(
+                """
+                SELECT id, camera_name, speed, avg_speed, detection_time, time, veh_img, vehicle_img, license_img, plate_img
+                FROM vehicle_logs
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (int(row_id),),
+            )
+            row = cur.fetchone()
+            if not row:
+                cur.close()
+                conn.close()
+                return {"success": False, "updated": 0, "message": "row not found"}
+
+            cur.execute(
+                """
+                UPDATE vehicle_logs
+                SET
+                    license_plate = %s,
+                    license = %s,
+                    class_id = %s,
+                    class_name = %s,
+                    vehicle_class = %s
+                WHERE id = %s
+                """,
+                (lic, lic, int(rule_cls_id), rule_class_name, rule_class_name, int(row_id)),
+            )
+
+            dt = row.get("detection_time") or row.get("time") or datetime.datetime.now()
+            speed = row.get("avg_speed") or row.get("speed") or ""
+            veh_img = row.get("veh_img") or row.get("vehicle_img") or ""
+            license_img = row.get("license_img") or row.get("plate_img") or ""
+            _update_tcp_movement(
+                cur,
+                row.get("camera_name") or "",
+                lic,
+                dt,
+                speed,
+                rule_class_name,
+                int(rule_cls_id),
+                veh_img,
+                license_img,
+            )
+
+            conn.commit()
+            affected = cur.rowcount
+            cur.close()
+            conn.close()
+            print(f"[EVENT OCR] corrected row={row_id} license={lic} reason={reason} score={score}")
+            return {"success": True, "updated": affected, "license": lic}
+    except Exception as e:
+        print("[EVENT OCR] DB update skipped:", e)
+        return {"success": False, "updated": 0, "message": str(e)}
 
 def upsert_vehicle_log(
     track_id,

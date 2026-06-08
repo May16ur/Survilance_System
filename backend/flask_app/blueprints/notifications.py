@@ -11,6 +11,7 @@ from werkzeug.utils import secure_filename
 
 from flask_app.blueprints.route_utils import RECEIVED_FOLDER, clear_api_cache
 from flask_app.services.cp_plus import decode_event_images, image_content_status, normalize_event, store_event_in_db
+from flask_app.services.plate_ocr_worker import enqueue_event_plate_ocr
 from flask_app.services.cp_plus import ANPR_IMAGE_FOLDER
 
 bp = Blueprint("notifications", __name__)
@@ -380,8 +381,15 @@ def tollgate_notification():
                 normalized["vehicle"] = saved["url"]
 
     db_result = store_event_in_db(normalized)
+    ocr_result = enqueue_event_plate_ocr(
+        row_id=db_result.get("id") if isinstance(db_result, dict) else None,
+        license_img=normalized.get("license_img", ""),
+        plate_color=normalized.get("plate_color", ""),
+        current_license=normalized.get("license", ""),
+    ) if isinstance(db_result, dict) and db_result.get("success") else {"queued": False, "reason": "db insert failed"}
     event_data["parsed"] = normalized
     event_data["db_result"] = db_result
+    event_data["plate_ocr"] = ocr_result
 
     _write_received_json(json_filename, event_data)
 
@@ -394,6 +402,7 @@ def tollgate_notification():
         "event_file": json_filename,
         "parsed": normalized,
         "db_result": db_result,
+        "plate_ocr": ocr_result,
     })
 
 
