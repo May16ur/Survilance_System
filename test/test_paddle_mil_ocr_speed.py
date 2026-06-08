@@ -14,6 +14,9 @@ Notes:
 from __future__ import annotations
 
 import argparse
+import base64
+import csv
+import json
 import os
 import statistics
 import sys
@@ -34,11 +37,23 @@ import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 
 from core.common import (  # noqa: E402
+    class_from_license_rule,
     correct_plate_with_master_or_military_format,
     normalize_plate_text,
 )
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+JSON_IMAGE_KEYS = {
+    "CutoutPic",
+    "cutoutPic",
+    "PlatePic",
+    "platePic",
+    "PlateCutout",
+    "plateCutout",
+    "VehiclePic",
+    "vehiclePic",
+}
+JSON_CONTENT_KEYS = {"Content", "content", "Data", "data", "Image", "image"}
 
 
 def iter_images(path: Path):
@@ -49,6 +64,78 @@ def iter_images(path: Path):
     for item in sorted(path.rglob("*")):
         if item.is_file() and item.suffix.lower() in IMAGE_EXTENSIONS:
             yield item
+
+
+def iter_json_files(path: Path):
+    if path.is_file() and path.suffix.lower() == ".json":
+        yield path
+        return
+    for item in sorted(path.rglob("*.json"), reverse=True):
+        if item.is_file():
+            yield item
+
+
+def parse_json_time(path: Path, payload: dict):
+    received_at = str(payload.get("received_at") or "")
+    if received_at:
+        return received_at
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+    picture = data.get("Picture") if isinstance(data, dict) and isinstance(data.get("Picture"), dict) else {}
+    snap = picture.get("SnapInfo") if isinstance(picture.get("SnapInfo"), dict) else {}
+    return str(snap.get("AccurateTime") or snap.get("SnapTime") or path.stem)
+
+
+def recursive_find_images(obj, parent_key=""):
+    found = []
+    if isinstance(obj, dict):
+        lowered = {str(k): v for k, v in obj.items()}
+        if parent_key in JSON_IMAGE_KEYS:
+            for key, value in lowered.items():
+                if key in JSON_CONTENT_KEYS and isinstance(value, str) and value.strip():
+                    found.append((parent_key, value.strip()))
+        for key, value in lowered.items():
+            found.extend(recursive_find_images(value, str(key)))
+    elif isinstance(obj, list):
+        for item in obj:
+            found.extend(recursive_find_images(item, parent_key))
+    return found
+
+
+def decode_image_content(content: str):
+    text = str(content or "").strip()
+    if not text:
+        return None
+    if "," in text and text.lower().startswith("data:"):
+        text = text.split(",", 1)[1]
+    try:
+        raw = base64.b64decode(text, validate=False)
+    except Exception:
+        return None
+    arr = np.frombuffer(raw, dtype=np.uint8)
+    return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+
+def image_from_json_payload(payload: dict):
+    images = recursive_find_images(payload)
+    if not images:
+        return None, ""
+    # Prefer plate/cutout image over vehicle body for OCR speed and accuracy.
+    images.sort(key=lambda item: 0 if "cutout" in item[0].lower() or "plate" in item[0].lower() else 1)
+    for source, content in images:
+        img = decode_image_content(content)
+        if img is not None and img.size > 0:
+            return img, source
+    return None, ""
+
+
+def json_existing_plate(payload: dict):
+    parsed = payload.get("parsed") if isinstance(payload.get("parsed"), dict) else {}
+    if parsed:
+        return str(parsed.get("license") or parsed.get("plate_number") or "")
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+    picture = data.get("Picture") if isinstance(data, dict) and isinstance(data.get("Picture"), dict) else {}
+    plate = picture.get("Plate") if isinstance(picture.get("Plate"), dict) else {}
+    return str(plate.get("PlateNumber") or plate.get("plateNumber") or "")
 
 
 def force_bgr(img):
@@ -177,7 +264,9 @@ def percentile(values, pct):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Benchmark PaddleOCR speed on plate images.")
-    parser.add_argument("--path", required=True, help="Image file or folder containing plate images.")
+    parser.add_argument("--path", help="Image file or folder containing plate images.")
+    parser.add_argument("--json-folder", help="Received JSON file or folder. Defaults to backend/received when --path is omitted.")
+    parser.add_argument("--output", help="CSV output path for JSON mode.")
     parser.add_argument("--repeat", type=int, default=1, help="OCR repeats per image after warmup.")
     parser.add_argument("--fps", type=float, default=5.0, help="Target live FPS to compare against.")
     parser.add_argument("--variants", choices=("fast", "balanced"), default="fast", help="fast=1 variant, balanced=3 variants.")
@@ -186,14 +275,21 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=0, help="Limit number of images.")
     args = parser.parse_args()
 
-    path = Path(args.path)
+    source_arg = args.json_folder or args.path or "backend/received"
+    path = Path(source_arg)
     if not path.is_absolute():
         path = ROOT / path
-    images = list(iter_images(path))
+    json_mode = bool(args.json_folder) or (path.is_dir() and any(path.glob("*.json"))) or path.suffix.lower() == ".json"
+
+    if json_mode:
+        inputs = list(iter_json_files(path))
+    else:
+        inputs = list(iter_images(path))
+
     if args.limit > 0:
-        images = images[:args.limit]
-    if not images:
-        print(f"No image files found: {path}")
+        inputs = inputs[:args.limit]
+    if not inputs:
+        print(f"No input files found: {path}")
         return 1
 
     print("Loading PaddleOCR...")
@@ -211,18 +307,36 @@ def main() -> int:
     all_times = []
     rows = []
 
-    for image_path in images:
-        img = cv2.imread(str(image_path))
+    for input_path in inputs:
+        payload = {}
+        image_source = ""
+        event_time = ""
+        camera_name = ""
+        existing_plate = ""
+        if json_mode:
+            try:
+                payload = json.loads(input_path.read_text(encoding="utf-8"))
+            except Exception as exc:
+                rows.append((input_path.name, "", "", "JSON_ERROR", str(exc), "", "", 0, 0.0, False))
+                continue
+            img, image_source = image_from_json_payload(payload)
+            event_time = parse_json_time(input_path, payload)
+            parsed = payload.get("parsed") if isinstance(payload.get("parsed"), dict) else {}
+            camera_name = str(parsed.get("camera_name") or "")
+            existing_plate = json_existing_plate(payload)
+        else:
+            img = cv2.imread(str(input_path))
+
         variants = build_variants(img, args.variants)
         if not variants:
-            rows.append((image_path.name, "READ_FAIL", "", "", 0.0, 0.0, False))
+            rows.append((input_path.name, event_time, camera_name, "READ_FAIL", "", existing_plate, "", 0, 0.0, False))
             continue
 
         # Warmup once per image shape to avoid counting first-call setup.
         try:
             run_ocr(reader, variants[0], recognition_only=not args.det)
         except Exception as exc:
-            rows.append((image_path.name, "OCR_ERROR", str(exc), "", 0.0, 0.0, False))
+            rows.append((input_path.name, event_time, camera_name, "OCR_ERROR", str(exc), existing_plate, "", 0, 0.0, False))
             continue
 
         image_times = []
@@ -242,10 +356,17 @@ def main() -> int:
             plate_color=args.plate_color,
         )
         avg_ms = statistics.mean(image_times)
+        rule_id, _rule_name = class_from_license_rule(corrected)
+        is_mil = rule_id == 0
+        if json_mode and not is_mil:
+            continue
         rows.append((
-            image_path.name,
+            input_path.name,
+            event_time,
+            camera_name,
             text or "NO_TEXT",
             corrected or "",
+            existing_plate,
             reason,
             score,
             avg_ms,
@@ -256,16 +377,40 @@ def main() -> int:
     print(f"Target FPS budget: {budget_ms:.1f} ms per OCR call")
     print(f"Mode: variants={args.variants}, paddle={'det+rec' if args.det else 'rec-only'}, repeat={args.repeat}")
     print()
-    header = ("file", "ocr_text", "corrected", "reason", "score", "avg_ms", "ok")
+    header = ("file", "event_time", "camera", "ocr_text", "corrected", "json_plate", "reason", "score", "avg_ms", "ok")
+    if not rows:
+        print("No military plate OCR rows found.")
+        if json_mode:
+            output = Path(args.output) if args.output else ROOT / "test" / "mil_plate_ocr_results.csv"
+            if not output.is_absolute():
+                output = ROOT / output
+            output.parent.mkdir(parents=True, exist_ok=True)
+            with output.open("w", newline="", encoding="utf-8") as csv_file:
+                csv.writer(csv_file).writerow(header)
+            print(f"Saved empty CSV: {output}")
+        return 0
+
     widths = [max(len(header[i]), *(len(str(row[i])) for row in rows)) for i in range(len(header))]
     print(" | ".join(header[i].ljust(widths[i]) for i in range(len(header))))
     print("-+-".join("-" * width for width in widths))
     for row in rows:
         printable = list(row)
-        printable[4] = str(printable[4])
-        printable[5] = f"{float(printable[5]):.1f}"
-        printable[6] = "YES" if printable[6] else "NO"
+        printable[7] = str(printable[7])
+        printable[8] = f"{float(printable[8]):.1f}"
+        printable[9] = "YES" if printable[9] else "NO"
         print(" | ".join(str(printable[i]).ljust(widths[i]) for i in range(len(header))))
+
+    if json_mode:
+        output = Path(args.output) if args.output else ROOT / "test" / "mil_plate_ocr_results.csv"
+        if not output.is_absolute():
+            output = ROOT / output
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("w", newline="", encoding="utf-8") as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow(header)
+            for row in rows:
+                writer.writerow(row)
+        print(f"\nSaved CSV: {output}")
 
     if all_times:
         print()
