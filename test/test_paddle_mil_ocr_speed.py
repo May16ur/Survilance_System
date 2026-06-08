@@ -71,7 +71,7 @@ def iter_json_files(path: Path):
     if path.is_file() and path.suffix.lower() == ".json":
         yield path
         return
-    for item in sorted(path.rglob("*.json"), reverse=True):
+    for item in sorted(path.rglob("*_event.json"), reverse=True):
         if item.is_file():
             yield item
 
@@ -252,13 +252,19 @@ def run_ocr(reader, img, recognition_only=True):
         try:
             result = reader.ocr(img, det=False, cls=False)
         except TypeError:
-            result = reader.ocr(img, det=False)
+            try:
+                result = reader.ocr(img, det=False)
+            except TypeError:
+                result = reader.predict(img)
         outputs.extend(flatten_paddle_result(result))
     else:
         try:
             result = reader.ocr(img, cls=False)
         except TypeError:
-            result = reader.ocr(img)
+            try:
+                result = reader.ocr(img)
+            except TypeError:
+                result = reader.predict(img)
         outputs.extend(flatten_paddle_result(result))
     return outputs
 

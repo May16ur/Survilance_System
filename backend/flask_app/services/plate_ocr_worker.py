@@ -134,7 +134,10 @@ def _run_plate_ocr(image_path):
         try:
             result = reader.ocr(img, det=False, cls=False)
         except TypeError:
-            result = reader.ocr(img, det=False)
+            try:
+                result = reader.ocr(img, det=False)
+            except TypeError:
+                result = reader.predict(img)
         return _flatten_paddle_result(result)
     except Exception as e:
         print("[EVENT OCR] Paddle run failed:", e)
