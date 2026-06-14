@@ -1,6 +1,6 @@
 const MILITARY_COLOR = "#3d9f78";
-const CIVIL_COLOR = "#f59e0b";
-const GRID_COLOR = "#26394c";
+const CIVIL_COLOR = "#ffa654";
+const GRID_COLOR = "#dfe5eb";
 
 function formatNumber(value) {
   return Number(value || 0).toLocaleString();

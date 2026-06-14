@@ -1118,6 +1118,194 @@ h1 {
   }
 }
 
+@media (max-width: 700px) {
+  .dashboard-workspace {
+    padding: 12px;
+  }
+
+  .dashboard-command-bar {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 16px;
+  }
+
+  .dashboard-command-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .dashboard-search {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dashboard-refresh,
+  .dashboard-system-status {
+    flex: 1 1 140px;
+  }
+}
+
+/* White dashboard palette */
+.dashboard-workspace {
+  color: #24323d;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(57, 159, 120, 0.07), transparent 28%),
+    #edf1f3;
+}
+
+.dashboard-command-bar,
+.dashboard-section,
+.dashboard-console .chart-card {
+  border-color: #d9e1e6;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 8px 24px rgba(28, 44, 56, 0.1);
+  backdrop-filter: none;
+}
+
+.dashboard-title-block h1,
+.dashboard-section h2,
+.chart-card-head h2 {
+  color: #176b50;
+}
+
+.dashboard-title-block p,
+.camera-count,
+.chart-card-head > div > span,
+.chart-legend,
+.bar-value,
+.bar-label,
+.bar-axis {
+  color: #71808b;
+}
+
+.dashboard-search {
+  border-color: #d8e1e6;
+  background: #f5f8f9;
+  color: #27836a;
+}
+
+.dashboard-search input {
+  color: #24323d;
+}
+
+.dashboard-refresh {
+  border-color: #b9dfd1;
+  background: #e8f5f0;
+  color: #176b50;
+}
+
+.dashboard-camera-chip {
+  border-color: #d5e0e4;
+  background: #ffffff;
+  color: #40515e;
+}
+
+.dashboard-camera-chip:hover,
+.dashboard-camera-chip:focus-visible,
+.dashboard-camera-chip.active {
+  border-color: #33a880;
+  background: #e8f6f1;
+  color: #176b50;
+}
+
+.dashboard-camera-chip b {
+  background: #e6f5ef;
+  color: #197154;
+}
+
+.dashboard-summary-card {
+  border-color: #dce4e8;
+  background: #ffffff;
+  box-shadow: 0 7px 20px rgba(28, 44, 56, 0.09);
+}
+
+.dashboard-summary-card strong {
+  color: #1f2d37;
+}
+
+.kpi-card-top > span {
+  color: #667681;
+}
+
+.tcp-report-card {
+  border-color: rgba(38, 160, 117, 0.3);
+  background: linear-gradient(145deg, #259f75, #16845f);
+  color: #ffffff;
+}
+
+.civil-tcp-section .tcp-report-card {
+  border-color: #d8e1e6;
+  background: #ffffff;
+  box-shadow: 0 5px 14px rgba(28, 44, 56, 0.08);
+}
+
+.civil-tcp-section .tcp-report-card span,
+.civil-tcp-section .tcp-report-card strong {
+  color: #25333d;
+}
+
+.civil-tcp-section .tcp-report-card small {
+  color: #71808b;
+}
+
+.bar-grid i {
+  border-color: #dfe5e9;
+}
+
+.bar-track i,
+.grouped-bar-track i {
+  box-shadow: none;
+}
+
+.speed-report-heading {
+  margin-bottom: 10px;
+}
+
+.speed-report-heading > strong {
+  border-color: #efc58f;
+  background: #fff4e6;
+  color: #a95d13;
+}
+
+.speed-report-table,
+.sunday-report-table-wrap {
+  border-color: #dce4e8;
+  background: #ffffff;
+}
+
+.speed-report-row {
+  border-color: #e5ebee;
+}
+
+.speed-report-labels,
+.sunday-report-table th {
+  background: #eef4f2;
+}
+
+.speed-report-labels b,
+.speed-report-row > span,
+.speed-report-row strong {
+  color: #40515e;
+}
+
+.sunday-report-table th {
+  color: #176b50;
+  border-color: #dce4e8;
+}
+
+.sunday-report-table td {
+  color: #42525d;
+  border-color: #e5eaed;
+}
+
+.sunday-report-table tbody tr:nth-child(even) {
+  background: #f7faf9;
+}
+
+.sunday-report-table tbody tr:hover {
+  background: #edf7f3;
+}
+
 .chart-card-head > div > span {
   color: #7a8592;
   font-size: 11px;

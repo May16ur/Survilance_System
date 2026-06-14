@@ -42,7 +42,6 @@ function SpeedReport({ pairs }) {
       <div className="speed-report-heading">
         <div>
           <span className="section-kicker">Speed Monitoring</span>
-          <h2>Over Speed Vehicles</h2>
         </div>
         <strong>&gt; 40 km/h</strong>
       </div>
