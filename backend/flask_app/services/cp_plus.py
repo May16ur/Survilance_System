@@ -320,12 +320,19 @@ def normalize_event(data, event_file=None):
         or _find_text_in_picture_headers(picture, ["UnRecognise", "Unknown"])
         or ""
     ).strip()
-    snap_time = (
+    raw_snap_time = (
         first_scalar(snap, TIME_KEYS)
         or first_scalar(picture, TIME_KEYS)
         or first_scalar(data or {}, TIME_KEYS)
         or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )
+    snap_time = raw_snap_time
+    try:
+        parsed_snap_time = datetime.datetime.fromisoformat(str(raw_snap_time).replace("Z", "+00:00"))
+        if parsed_snap_time.year < 2020:
+            snap_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        snap_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     plate_color = first_scalar(plate, PLATE_COLOR_KEYS) or first_scalar(picture, PLATE_COLOR_KEYS) or ""
     plate_type = first_scalar(plate, PLATE_TYPE_KEYS) or first_scalar(picture, PLATE_TYPE_KEYS) or ""
     vehicle_type = first_scalar(vehicle, VEHICLE_TYPE_KEYS) or first_scalar(picture, VEHICLE_TYPE_KEYS) or ""
@@ -365,6 +372,7 @@ def normalize_event(data, event_file=None):
         "speed": speed_text,
         "raw_speed": raw_speed,
         "time": snap_time,
+        "camera_time_raw": str(raw_snap_time or ""),
         "class_id": class_id,
         "class_name": class_name,
         "classification_reason": class_reason,

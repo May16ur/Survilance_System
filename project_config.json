@@ -11,7 +11,10 @@
       "tcp": "igoo",
       "direction": "IN",
       "rtsp_url": "rtsp://admin:Welcome%2A123@192.168.2.133:554/video/live?channel=1&subtype=0",
-      "cp_plus_keys": []
+      "cp_plus_keys": [
+        "27101278-be56-19b2-f3d0-88374eebbe56",
+        "192.168.2.133"
+      ]
     },
     {
       "id": 2,
