@@ -1,5 +1,6 @@
-import { RefreshCw } from "lucide-react";
-import { BarChart, CHART_COLORS } from "../components/Charts.jsx";
+import { Activity, CalendarDays, CarFront, RefreshCw, Search, Shield, TrendingDown, TrendingUp } from "lucide-react";
+import { useMemo, useState } from "react";
+import { BarChart, CHART_COLORS, GroupedBarChart } from "../components/Charts.jsx";
 
 const DEFAULT_TCP_REPORTS = [
   { key: "igoo", label: "IGOO TCP" },
@@ -35,36 +36,173 @@ function TcpReportGroup({ title, pairs, type }) {
   );
 }
 
-export function DashboardPanel({ dashboard, comparison, diagnostic, cameras, cameraStats, refresh, openCameraLogs }) {
+function SpeedReport({ pairs }) {
+  return (
+    <div className="dashboard-section speed-report-section">
+      <div className="speed-report-heading">
+        <div>
+          <span className="section-kicker">Speed Monitoring</span>
+          <h2>Over Speed Vehicles</h2>
+        </div>
+        <strong>&gt; 40 km/h</strong>
+      </div>
+      <div className="speed-report-table">
+        <div className="speed-report-row speed-report-labels">
+          <span>Vehicle Type</span>
+          {pairs.map((pair) => <b key={pair.key}>{pair.label.replace(" TCP", "")}</b>)}
+        </div>
+        <div className="speed-report-row">
+          <span><i className="mil-speed-dot" /> Military</span>
+          {pairs.map((pair) => <strong key={pair.key}>{pair.mil_over_speed || 0}</strong>)}
+        </div>
+        <div className="speed-report-row">
+          <span><i className="civil-speed-dot" /> Civil</span>
+          {pairs.map((pair) => <strong key={pair.key}>{pair.civil_over_speed || 0}</strong>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SundayMilitaryReport({ report }) {
+  const rows = report?.rows || [];
+  return (
+    <div className="dashboard-section sunday-report-section">
+      <div className="sunday-report-heading">
+        <div>
+          <span className="section-kicker">Weekly Movement Register</span>
+          <h2>Sunday Military Vehicle Report</h2>
+        </div>
+        <div className="sunday-report-meta">
+          <strong>{report?.report_date || "Latest Sunday"}</strong>
+          <span>{report?.total || 0} movements</span>
+        </div>
+      </div>
+      <div className="sunday-report-table-wrap">
+        <table className="sunday-report-table">
+          <thead>
+            <tr>
+              <th>Ser</th>
+              <th>Track</th>
+              <th>License</th>
+              <th>Unit</th>
+              <th>Vehicle Type</th>
+              <th>Make / Model</th>
+              <th>Driver</th>
+              <th>Speed</th>
+              <th>Time</th>
+              <th>Camera</th>
+              <th>Source</th>
+              <th>Remarks</th>
+              <th>Plate</th>
+              <th>Vehicle</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => {
+              const plate = row.plate || row.license_img || row.plate_img;
+              const vehicle = row.vehicle || row.veh_img || row.vehicle_img;
+              return (
+                <tr key={`${row.id || row.track_id || row.license}-${index}`}>
+                  <td>{index + 1}</td>
+                  <td>{row.track_id || "-"}</td>
+                  <td><strong>{row.license || row.license_plate || "Unknown"}</strong></td>
+                  <td>{row.unit || "Mil"}</td>
+                  <td>{row.vehicle_type_master || row.class_name || "Military"}</td>
+                  <td>{row.make_model || "-"}</td>
+                  <td>{row.driver_name || "-"}</td>
+                  <td>{row.avg_speed || row.speed || "-"}</td>
+                  <td>{row.time || row.detection_time || "-"}</td>
+                  <td>{row.camera_name || "-"}</td>
+                  <td>{row.source_type || "vehicle_logs"}</td>
+                  <td>{row.vehicle_remarks || row.remarks || "-"}</td>
+                  <td>{plate ? <a href={plate} target="_blank" rel="noreferrer"><img className="thumb" src={plate} alt="Plate" /></a> : "-"}</td>
+                  <td>{vehicle ? <a href={vehicle} target="_blank" rel="noreferrer"><img className="thumb" src={vehicle} alt="Vehicle" /></a> : "-"}</td>
+                </tr>
+              );
+            })}
+            {!rows.length && (
+              <tr>
+                <td colSpan="14" className="empty-table">No military vehicle movement recorded for this Sunday.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export function DashboardPanel({ dashboard, comparison, diagnostic, sundayMilitary, cameras, cameraStats, status, refresh, openCameraLogs }) {
+  const [cameraSearch, setCameraSearch] = useState("");
   const comparisonPairs = comparison?.pairs || {};
   const pairs = DEFAULT_TCP_REPORTS.map((fallback) => {
     const live = comparisonPairs[fallback.key] || {};
     return { ...fallback, ...live, label: fallback.label };
   });
+  const todayTotal = Number(dashboard?.today_total ?? comparison?.today_total ?? 0);
+  const todayMil = Number(dashboard?.today_mil ?? 0);
+  const todayCivil = Number(dashboard?.today_civil ?? 0);
+  const weeklyTotal = Number(dashboard?.week_total ?? 0);
+  const dailyTotals = dashboard?.total || [];
+  const yesterdayTotal = Number(dailyTotals[dailyTotals.length - 2] || 0);
+  const dailyChange = yesterdayTotal ? ((todayTotal - yesterdayTotal) / yesterdayTotal) * 100 : 0;
+  const filteredCameras = useMemo(() => {
+    const query = cameraSearch.trim().toLowerCase();
+    return query ? cameras.filter((camera) => camera.name.toLowerCase().includes(query)) : cameras;
+  }, [cameraSearch, cameras]);
   const summaryCards = [
-    ["Today's Total Veh", dashboard?.today_total ?? comparison?.today_total ?? 0],
-    ["Today's Mil Veh", dashboard?.today_mil ?? 0],
-    ["Today's Civil Veh", dashboard?.today_civil ?? 0],
-    ["Total Veh in Last 7 Days", dashboard?.week_total ?? 0],
+    { label: "Today's Vehicles", value: todayTotal, detail: `${dailyChange >= 0 ? "+" : ""}${dailyChange.toFixed(1)}% vs yesterday`, trend: dailyChange, icon: Activity, tone: "cyan" },
+    { label: "Military Vehicles", value: todayMil, detail: `${todayTotal ? Math.round((todayMil / todayTotal) * 100) : 0}% of today's traffic`, trend: 0, icon: Shield, tone: "emerald" },
+    { label: "Civil Vehicles", value: todayCivil, detail: `${todayTotal ? Math.round((todayCivil / todayTotal) * 100) : 0}% of today's traffic`, trend: 0, icon: CarFront, tone: "amber" },
+    { label: "Last 7 Days", value: weeklyTotal, detail: `${Math.round(weeklyTotal / 7)} daily average`, trend: 0, icon: CalendarDays, tone: "violet" },
   ];
+  const backendOnline = /online|refreshed/i.test(status || "");
 
   return (
     <section className="dashboard-console">
+      <header className="dashboard-command-bar">
+        <div className="dashboard-title-block">
+          <span className="section-kicker">e-TCP Operations Console</span>
+          <h1>Vehicle Intelligence Dashboard</h1>
+          <p>Real-time ANPR, traffic movement and TCP monitoring</p>
+        </div>
+        <div className="dashboard-command-actions">
+          <label className="dashboard-search">
+            <Search size={16} />
+            <input
+              value={cameraSearch}
+              onChange={(event) => setCameraSearch(event.target.value)}
+              placeholder="Search cameras..."
+            />
+          </label>
+          <button className="dashboard-refresh" onClick={refresh}>
+            <RefreshCw size={16} /> Refresh
+          </button>
+          <div className={`dashboard-system-status ${backendOnline ? "online" : "offline"}`}>
+            <i />
+            <span>{backendOnline ? "System Online" : "System Offline"}</span>
+          </div>
+        </div>
+      </header>
+
       <div className="dashboard-section camera-section">
         <div className="dashboard-section-head">
-          <h2>Cameras</h2>
-          <button className="dashboard-refresh" onClick={refresh}>
-            <RefreshCw size={14} /> Refresh
-          </button>
+          <div>
+            <span className="section-kicker">Network Status</span>
+            <h2>Live Cameras</h2>
+          </div>
+          <span className="camera-count">{filteredCameras.length} endpoints</span>
         </div>
         <div className="dashboard-camera-chips">
-          {cameras.map((camera) => (
+          {filteredCameras.map((camera, index) => (
             <button
-              className="dashboard-camera-chip"
+              className={`dashboard-camera-chip ${index === 0 && !cameraSearch ? "active" : ""}`}
               key={camera.id}
               onClick={() => openCameraLogs(camera.id)}
               title={`Open ${camera.name} logs`}
             >
+              <i className="camera-live-dot" />
               <span>{camera.name}</span>
               <b>{cameraStats[camera.id]?.today_total || 0}</b>
             </button>
@@ -73,10 +211,17 @@ export function DashboardPanel({ dashboard, comparison, diagnostic, cameras, cam
       </div>
 
       <div className="dashboard-summary-grid">
-        {summaryCards.map(([label, value]) => (
-          <article className="dashboard-summary-card" key={label}>
-            <span>{label}</span>
+        {summaryCards.map(({ label, value, detail, trend, icon: Icon, tone }) => (
+          <article className={`dashboard-summary-card ${tone}`} key={label}>
+            <div className="kpi-card-top">
+              <span>{label}</span>
+              <i><Icon size={18} /></i>
+            </div>
             <strong>{Number(value || 0).toLocaleString()}</strong>
+            <small className={trend < 0 ? "negative" : ""}>
+              {trend < 0 ? <TrendingDown size={13} /> : trend > 0 ? <TrendingUp size={13} /> : null}
+              {detail}
+            </small>
           </article>
         ))}
       </div>
@@ -104,6 +249,15 @@ export function DashboardPanel({ dashboard, comparison, diagnostic, cameras, cam
           seriesLabel="Civil Vehicles"
         />
       </div>
+
+      <SpeedReport pairs={pairs} />
+      <GroupedBarChart
+        title="Over Speed by TCP"
+        labels={pairs.map((pair) => pair.label.replace(" TCP", ""))}
+        military={pairs.map((pair) => pair.mil_over_speed || 0)}
+        civil={pairs.map((pair) => pair.civil_over_speed || 0)}
+      />
+      <SundayMilitaryReport report={sundayMilitary} />
     </section>
   );
 }

@@ -47,6 +47,11 @@ def class_bucket(class_name="", class_id=None):
     return ""
 
 
+def speed_number(value):
+    match = re.search(r"-?\d+(?:\.\d+)?", str(value or ""))
+    return float(match.group(0)) if match else 0.0
+
+
 def display_unit_for_class(unit="", class_name="", class_id=None):
     unit_text = str(unit or "").strip()
     if unit_text and unit_text.lower() != NO_RECORD_TEXT.lower():
@@ -1587,6 +1592,33 @@ def get_last_7_days_report_rows(camera_name=None, vehicle_type="all", start_date
     elif vehicle_type=="civil": rows=[r for r in rows if str(r.get("class_id"))=="1" or "civil" in str(r.get("class_name","")).lower()]
     return rows
 
+
+def get_sunday_military_report(limit=500, date_value=None):
+    if date_value:
+        report_date = datetime.datetime.strptime(date_value, "%Y-%m-%d").date()
+    else:
+        today = datetime.date.today()
+        report_date = today - datetime.timedelta(days=(today.weekday() + 1) % 7)
+
+    report_key = report_date.strftime("%Y-%m-%d")
+    rows = fetch_recent_logs(
+        limit=max(50, min(int(limit or 500), 2000)),
+        start_date=report_key,
+        end_date=report_key,
+    )
+    military_rows = [
+        row for row in rows
+        if class_bucket(row.get("class_name"), row.get("class_id")) == "mil"
+    ]
+    return {
+        "success": True,
+        "report_date": report_key,
+        "day": report_date.strftime("%A"),
+        "total": len(military_rows),
+        "rows": military_rows,
+    }
+
+
 def get_dashboard_stats(camera_name=None, days=7, start_date=None, end_date=None):
     try:
         today=datetime.date.today(); end = datetime.datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else today
@@ -2057,10 +2089,21 @@ def get_camera_comparison_stats():
             civil_total = int(stats_a.get("civil", 0)) + int(stats_b.get("civil", 0))
             mil_remaining = max(mil_total - (matched_mil * 2), 0)
             civil_remaining = max(civil_total - (matched_civil * 2), 0)
+            mil_over_speed = sum(
+                1 for row in report_rows
+                if class_bucket(row.get("class_name"), row.get("class_id")) == "mil"
+                and max(speed_number(row.get("speed")), speed_number(row.get("out_speed"))) > 40
+            )
+            civil_over_speed = sum(
+                1 for row in report_rows
+                if class_bucket(row.get("class_name"), row.get("class_id")) == "civil"
+                and max(speed_number(row.get("speed")), speed_number(row.get("out_speed"))) > 40
+            )
         except Exception as e:
             print("Camera comparison pair error", key, e)
             total_a = total_b = pair_total = matched = waiting = remaining = 0
             mil_total = civil_total = matched_mil = matched_civil = mil_remaining = civil_remaining = 0
+            mil_over_speed = civil_over_speed = 0
 
         pairs[key] = {
             "tcp_key": key,
@@ -2081,6 +2124,8 @@ def get_camera_comparison_stats():
             "civil_total": civil_total,
             "civil_matched": matched_civil,
             "civil_remaining": civil_remaining,
+            "mil_over_speed": mil_over_speed,
+            "civil_over_speed": civil_over_speed,
             "waiting_rows": waiting,
             "out_seen_count": matched,
             "remaining_rows": [],

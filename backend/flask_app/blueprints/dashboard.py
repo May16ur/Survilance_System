@@ -7,6 +7,7 @@ from core.common import (
     get_remaining_vehicle_rows,
     get_camera_today_db_stats,
     get_camera_sum_vs_dashboard,
+    get_sunday_military_report,
 )
 from flask_app.blueprints.route_utils import cache_get, cache_set
 
@@ -93,3 +94,14 @@ def api_count_diagnostic():
 def api_remaining_vehicles():
     group = request.args.get("group", "kiari")
     return jsonify(get_remaining_vehicle_rows(group=group))
+
+
+@bp.route("/api/sunday_military_report")
+def api_sunday_military_report():
+    date_value = request.args.get("date")
+    limit = max(50, min(request.args.get("limit", default=500, type=int), 2000))
+    cache_key = f"sunday_military:{date_value or 'latest'}:{limit}"
+    cached = cache_get(cache_key, 30)
+    if cached is not None:
+        return jsonify(cached)
+    return jsonify(cache_set(cache_key, get_sunday_military_report(limit=limit, date_value=date_value)))

@@ -39,6 +39,7 @@ function App() {
   const [dashboard, setDashboard] = useState(null);
   const [comparison, setComparison] = useState(null);
   const [diagnostic, setDiagnostic] = useState(null);
+  const [sundayMilitary, setSundayMilitary] = useState(null);
   const [reportRows, setReportRows] = useState([]);
   const [reportFilters, setReportFilters] = useState({ vehicle_type: "all", camera_id: "", start_date: "", end_date: "" });
   const [tcpName, setTcpName] = useState("kiari");
@@ -147,14 +148,16 @@ function App() {
 
   async function loadDashboard(showStatus = true) {
     try {
-      const [full, cmp, diag] = await Promise.all([
+      const [full, cmp, diag, sunday] = await Promise.all([
         getJson("/dashboard_full"),
         getJson("/api/camera_comparison"),
         getJson("/api/count_diagnostic"),
+        getJson("/api/sunday_military_report?limit=500"),
       ]);
       setDashboard(full);
       setComparison(cmp);
       setDiagnostic(diag);
+      setSundayMilitary(sunday);
       if (showStatus) setStatus("Dashboard refreshed.");
     } catch (e) {
       if (showStatus) setStatus(`Dashboard refresh failed: ${e.message}`);
@@ -404,22 +407,26 @@ function App() {
       </aside>
 
       <section className={`workspace ${activeTab === "dashboard" ? "dashboard-workspace" : ""}`}>
-        <div className="site-banner">
-          <img src={leftLogo} alt="e-TCP left insignia" />
-          <div className="site-banner-copy">
-            <strong>E-TCP</strong>
-            <span>AI Based Speed Monitoring and TFC Control Post</span>
-          </div>
-          <img src={rightLogo} alt="e-TCP right insignia" />
-        </div>
+        {activeTab !== "dashboard" && (
+          <>
+            <div className="site-banner">
+              <img src={leftLogo} alt="e-TCP left insignia" />
+              <div className="site-banner-copy">
+                <strong>E-TCP</strong>
+                <span>AI Based Speed Monitoring and TFC Control Post</span>
+              </div>
+              <img src={rightLogo} alt="e-TCP right insignia" />
+            </div>
 
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Operations Console</p>
-            <h1>{activeLabel}</h1>
-          </div>
-          <div className="status-pill">{status}</div>
-        </header>
+            <header className="topbar">
+              <div>
+                <p className="eyebrow">Operations Console</p>
+                <h1>{activeLabel}</h1>
+              </div>
+              <div className="status-pill">{status}</div>
+            </header>
+          </>
+        )}
 
         {activeTab !== "dashboard" && (
           <section className="metric-row">
@@ -435,8 +442,10 @@ function App() {
             dashboard={dashboard}
             comparison={comparison}
             diagnostic={diagnostic}
+            sundayMilitary={sundayMilitary}
             cameras={cameras}
             cameraStats={cameraStats}
+            status={status}
             refresh={() => loadDashboard(true)}
             openCameraLogs={(cameraId) => {
               setActiveTab("logs");

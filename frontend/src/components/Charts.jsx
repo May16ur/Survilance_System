@@ -1,6 +1,6 @@
 const MILITARY_COLOR = "#3d9f78";
-const CIVIL_COLOR = "#ffad5a";
-const GRID_COLOR = "#dfe5eb";
+const CIVIL_COLOR = "#f59e0b";
+const GRID_COLOR = "#26394c";
 
 function formatNumber(value) {
   return Number(value || 0).toLocaleString();
@@ -96,6 +96,54 @@ export function BarChart({ title, labels = [], values = [], color, seriesLabel }
                       background: color,
                     }}
                   />
+                </div>
+                <span className="bar-label">{point.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+export function GroupedBarChart({ title, labels = [], military = [], civil = [] }) {
+  const points = labels.map((label, index) => ({
+    label,
+    military: Number(military[index] || 0),
+    civil: Number(civil[index] || 0),
+  }));
+  const maxValue = Math.max(1, ...points.flatMap((point) => [point.military, point.civil]));
+  const tickMax = maxValue <= 5 ? 5 : Math.ceil(maxValue / 5) * 5;
+  const ticks = [tickMax, Math.round(tickMax * 0.75), Math.round(tickMax * 0.5), Math.round(tickMax * 0.25), 0];
+
+  return (
+    <article className="chart-card speed-chart-card">
+      <div className="chart-card-head">
+        <div>
+          <h2>{title}</h2>
+          <span>Vehicles recorded above 40 km/h today</span>
+        </div>
+        <div className="chart-legend">
+          <span><i style={{ background: MILITARY_COLOR }} /> Military</span>
+          <span><i style={{ background: CIVIL_COLOR }} /> Civil</span>
+        </div>
+      </div>
+      <div className="bar-chart grouped-bar-chart">
+        <div className="bar-axis">
+          {ticks.map((tick, index) => <span key={`${tick}-${index}`}>{tick}</span>)}
+        </div>
+        <div className="bar-plot">
+          <div className="bar-grid" aria-hidden="true">
+            {ticks.map((_, index) => <i key={index} />)}
+          </div>
+          <div className="bar-columns">
+            {points.map((point) => (
+              <div className="bar-column grouped-bar-column" key={point.label}>
+                <span className="bar-value">{point.military + point.civil}</span>
+                <div className="grouped-bar-track">
+                  <i style={{ height: `${(point.military / tickMax) * 100}%`, background: MILITARY_COLOR }} />
+                  <i style={{ height: `${(point.civil / tickMax) * 100}%`, background: CIVIL_COLOR }} />
                 </div>
                 <span className="bar-label">{point.label}</span>
               </div>

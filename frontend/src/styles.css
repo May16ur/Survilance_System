@@ -313,11 +313,13 @@ h1 {
 }
 
 .dashboard-console {
+  min-width: 0;
   display: grid;
   gap: 12px;
 }
 
 .dashboard-section {
+  min-width: 0;
   padding: 12px;
   border: 1px solid rgba(211, 222, 230, 0.85);
   border-radius: 10px;
@@ -328,8 +330,10 @@ h1 {
 .dashboard-section h2 {
   margin: 0 0 10px;
   color: #16785b;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 16px;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.035em;
   text-transform: uppercase;
 }
 
@@ -452,18 +456,21 @@ h1 {
 
 .tcp-report-card span {
   min-height: 28px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
+  letter-spacing: 0.01em;
 }
 
 .tcp-report-card strong {
   margin: 3px 0 7px;
-  font-size: 25px;
+  font-size: 27px;
+  font-weight: 800;
 }
 
 .tcp-report-card small {
   margin-top: 2px;
-  font-size: 9px;
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .tcp-report-empty {
@@ -488,8 +495,8 @@ h1 {
 }
 
 .civil-tcp-section .tcp-report-card {
-  background: linear-gradient(135deg, #f29a47 0%, #ffb15f 100%);
-  box-shadow: 0 4px 11px rgba(242, 154, 71, 0.22);
+  background: linear-gradient(135deg, #2c7899 0%, #4399b8 100%);
+  box-shadow: 0 4px 11px rgba(44, 120, 153, 0.24);
 }
 
 .dashboard-console .chart-card {
@@ -517,8 +524,598 @@ h1 {
 .chart-card-head h2 {
   margin: 0;
   color: #176449;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 15px;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.speed-report-section {
+  overflow: hidden;
+}
+
+.speed-report-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.speed-report-heading h2 {
+  margin: 2px 0 0;
+}
+
+.section-kicker {
+  color: #71808d;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.speed-report-heading > strong {
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: #e6f3f7;
+  color: #246c89;
+  font-size: 12px;
+}
+
+.speed-report-table {
+  min-width: 760px;
+  overflow: hidden;
+  border: 1px solid #dce5ea;
+  border-radius: 8px;
+}
+
+.speed-report-row {
+  display: grid;
+  grid-template-columns: 140px repeat(7, minmax(72px, 1fr));
+  align-items: center;
+  min-height: 48px;
+  border-bottom: 1px solid #e5ebef;
+}
+
+.speed-report-row:last-child {
+  border-bottom: 0;
+}
+
+.speed-report-row > * {
+  padding: 9px 10px;
+  text-align: center;
+}
+
+.speed-report-row > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #344552;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.speed-report-row strong {
+  color: #1e3542;
+  font-size: 17px;
+}
+
+.speed-report-labels {
+  min-height: 38px;
+  background: #edf4f6;
+}
+
+.speed-report-labels b {
+  color: #47616e;
+  font-size: 10px;
+}
+
+.mil-speed-dot,
+.civil-speed-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.mil-speed-dot {
+  background: #3d9f78;
+}
+
+.civil-speed-dot {
+  background: #3987a8;
+}
+
+.speed-chart-card {
+  width: 100%;
+}
+
+.grouped-bar-track {
+  width: min(52px, 92%);
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+}
+
+.grouped-bar-track i {
+  width: calc(50% - 2px);
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+}
+
+.grouped-bar-column {
+  grid-template-rows: 18px 174px 38px;
+}
+
+.sunday-report-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.sunday-report-heading h2 {
+  margin: 2px 0 0;
+}
+
+.sunday-report-meta {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+}
+
+.sunday-report-meta strong {
+  color: #176449;
+  font-size: 13px;
+}
+
+.sunday-report-meta span {
+  color: #71808d;
+  font-size: 10px;
+}
+
+.sunday-report-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow: auto;
+  max-height: 520px;
+  border: 1px solid #dce5ea;
+  border-radius: 8px;
+}
+
+.sunday-report-table {
+  min-width: 1480px;
+}
+
+.sunday-report-table th {
+  background: #dfeee9;
+  color: #285d4c;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.sunday-report-table td {
+  font-size: 11px;
+}
+
+.sunday-report-table tbody tr:nth-child(even) {
+  background: #f5faf8;
+}
+
+/* Premium operations dashboard theme */
+.dashboard-workspace {
+  padding: 18px 22px 28px;
+  color: #e8f1f7;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(25, 184, 198, 0.12), transparent 28%),
+    radial-gradient(circle at 100% 36%, rgba(16, 185, 129, 0.08), transparent 30%),
+    #07111d;
+}
+
+.dashboard-console {
+  gap: 18px;
+}
+
+.dashboard-command-bar,
+.dashboard-section,
+.dashboard-summary-grid,
+.dashboard-console .chart-card {
+  border: 1px solid rgba(125, 211, 252, 0.12);
+  background: linear-gradient(145deg, rgba(18, 34, 51, 0.88), rgba(10, 23, 36, 0.92));
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  backdrop-filter: blur(16px);
+}
+
+.dashboard-command-bar {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 22px;
+  border-radius: 16px;
+}
+
+.dashboard-title-block h1 {
+  margin: 4px 0;
+  color: #f8fbfd;
+  font-size: clamp(23px, 2.2vw, 32px);
+  letter-spacing: -0.035em;
+}
+
+.dashboard-title-block p {
+  margin: 0;
+  color: #8096a8;
+  font-size: 12px;
+}
+
+.dashboard-command-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dashboard-search {
+  min-width: 220px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  border-radius: 10px;
+  background: rgba(3, 13, 24, 0.55);
+  color: #5ee3ee;
+}
+
+.dashboard-search:focus-within {
+  border-color: rgba(34, 211, 238, 0.65);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.08);
+}
+
+.dashboard-search input {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #edf8fb;
+  font-size: 12px;
+}
+
+.dashboard-search input::placeholder {
+  color: #60798d;
+}
+
+.dashboard-refresh {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid rgba(34, 211, 238, 0.3);
+  border-radius: 10px;
+  background: rgba(18, 166, 184, 0.12);
+  color: #67e8f9;
+  font-weight: 700;
+}
+
+.dashboard-refresh:hover {
+  border-color: #22d3ee;
+  background: rgba(18, 166, 184, 0.23);
+}
+
+.dashboard-system-status {
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid rgba(248, 113, 113, 0.18);
+  border-radius: 10px;
+  background: rgba(127, 29, 29, 0.12);
+  color: #fca5a5;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.dashboard-system-status i,
+.camera-live-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 9px rgba(239, 68, 68, 0.75);
+}
+
+.dashboard-system-status.online {
+  border-color: rgba(52, 211, 153, 0.22);
+  background: rgba(6, 78, 59, 0.18);
+  color: #6ee7b7;
+}
+
+.dashboard-system-status.online i,
+.camera-live-dot {
+  background: #34d399;
+  box-shadow: 0 0 9px rgba(52, 211, 153, 0.72);
+}
+
+.dashboard-section {
+  padding: 16px;
+  border-radius: 15px;
+}
+
+.dashboard-section h2,
+.chart-card-head h2 {
+  color: #eaf5f8;
+  letter-spacing: 0.025em;
+}
+
+.section-kicker {
+  color: #38cbd7;
+}
+
+.camera-count {
+  color: #718a9d;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.dashboard-camera-chips {
+  gap: 9px;
+}
+
+.dashboard-camera-chip {
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid rgba(125, 211, 252, 0.12);
+  background: rgba(20, 39, 56, 0.72);
+  color: #a9bdca;
+  box-shadow: none;
+}
+
+.dashboard-camera-chip:hover,
+.dashboard-camera-chip:focus-visible,
+.dashboard-camera-chip.active {
+  border-color: rgba(34, 211, 238, 0.48);
+  background: rgba(15, 112, 128, 0.24);
+  color: #e7fbfd;
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.06);
+}
+
+.dashboard-camera-chip b {
+  background: rgba(34, 211, 238, 0.12);
+  color: #67e8f9;
+}
+
+.dashboard-summary-grid {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  gap: 14px;
+}
+
+.dashboard-summary-card {
+  min-height: 124px;
+  padding: 17px;
+  border: 1px solid rgba(125, 211, 252, 0.1);
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(18, 34, 51, 0.94), rgba(10, 23, 36, 0.96));
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.24);
+}
+
+.dashboard-summary-card.emerald {
+  border-color: rgba(52, 211, 153, 0.22);
+}
+
+.dashboard-summary-card.amber {
+  border-color: rgba(245, 158, 11, 0.24);
+}
+
+.dashboard-summary-card.violet {
+  border-color: rgba(167, 139, 250, 0.22);
+}
+
+.kpi-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kpi-card-top > span {
+  color: #8ea4b5;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.kpi-card-top > i {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(34, 211, 238, 0.1);
+  color: #48d7e2;
+}
+
+.dashboard-summary-card.emerald .kpi-card-top > i {
+  background: rgba(52, 211, 153, 0.1);
+  color: #34d399;
+}
+
+.dashboard-summary-card.amber .kpi-card-top > i {
+  background: rgba(245, 158, 11, 0.1);
+  color: #fbbf24;
+}
+
+.dashboard-summary-card.violet .kpi-card-top > i {
+  background: rgba(167, 139, 250, 0.1);
+  color: #a78bfa;
+}
+
+.dashboard-summary-card strong {
+  margin: 12px 0 8px;
+  color: #f8fbfd;
+  font-size: 31px;
+  letter-spacing: -0.04em;
+}
+
+.dashboard-summary-card small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #6ee7b7;
+  font-size: 10px;
+}
+
+.dashboard-summary-card small.negative {
+  color: #fca5a5;
+}
+
+.tcp-report-grid {
+  gap: 10px;
+}
+
+.tcp-report-card {
+  min-height: 102px;
+  padding: 13px;
+  border: 1px solid rgba(52, 211, 153, 0.18);
+  border-radius: 11px;
+  background: linear-gradient(145deg, rgba(5, 87, 67, 0.7), rgba(5, 52, 48, 0.76));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.civil-tcp-section .tcp-report-card {
+  border-color: rgba(245, 158, 11, 0.2);
+  background: linear-gradient(145deg, rgba(120, 70, 9, 0.68), rgba(73, 43, 8, 0.76));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.tcp-report-card span {
+  color: #dffaf0;
+  font-size: 10px;
+}
+
+.civil-tcp-section .tcp-report-card span {
+  color: #fff3cf;
+}
+
+.tcp-report-card strong {
+  color: #ffffff;
+  font-size: 25px;
+}
+
+.tcp-report-card small {
+  color: rgba(226, 240, 235, 0.72);
+}
+
+.dashboard-total-note {
+  color: #617b8e;
+}
+
+.dashboard-console .chart-card {
+  padding: 17px;
+  border-radius: 15px;
+}
+
+.chart-card-head > div > span,
+.chart-legend,
+.bar-value,
+.bar-label,
+.bar-axis {
+  color: #71899b;
+}
+
+.bar-grid i {
+  border-color: rgba(125, 211, 252, 0.09);
+}
+
+.bar-track i,
+.grouped-bar-track i {
+  box-shadow: 0 0 16px rgba(34, 211, 238, 0.14);
+}
+
+.speed-report-heading > strong {
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  background: rgba(120, 70, 9, 0.2);
+  color: #fbbf24;
+}
+
+.speed-report-table,
+.sunday-report-table-wrap {
+  border-color: rgba(125, 211, 252, 0.12);
+  background: rgba(4, 15, 26, 0.38);
+}
+
+.speed-report-row {
+  border-color: rgba(125, 211, 252, 0.08);
+}
+
+.speed-report-labels,
+.sunday-report-table th {
+  background: rgba(22, 47, 65, 0.82);
+}
+
+.speed-report-labels b,
+.speed-report-row > span,
+.speed-report-row strong {
+  color: #afc3d0;
+}
+
+.civil-speed-dot {
+  background: #f59e0b;
+}
+
+.sunday-report-meta strong {
+  color: #67e8f9;
+}
+
+.sunday-report-meta span {
+  color: #71899b;
+}
+
+.sunday-report-table {
+  background: transparent;
+}
+
+.sunday-report-table th {
+  color: #91e8ef;
+  border-color: rgba(125, 211, 252, 0.1);
+}
+
+.sunday-report-table td {
+  color: #b8cad5;
+  border-color: rgba(125, 211, 252, 0.07);
+  background: transparent;
+}
+
+.sunday-report-table tbody tr:nth-child(even) {
+  background: rgba(18, 39, 54, 0.42);
+}
+
+.sunday-report-table tbody tr:hover {
+  background: rgba(18, 166, 184, 0.08);
+}
+
+@media (max-width: 900px) {
+  .speed-report-section {
+    overflow-x: auto;
+  }
+
+  .sunday-report-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sunday-report-meta {
+    justify-items: start;
+  }
 }
 
 .chart-card-head > div > span {
