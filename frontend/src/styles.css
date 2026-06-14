@@ -371,6 +371,17 @@ h1 {
   box-shadow: 0 2px 7px rgba(17, 185, 137, 0.26);
   font-size: 11px;
   font-weight: 700;
+  border: 0;
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.dashboard-camera-chip:hover,
+.dashboard-camera-chip:focus-visible {
+  background: linear-gradient(135deg, #0d9e75, #18b584);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(17, 185, 137, 0.38);
+  transform: translateY(-1px);
 }
 
 .dashboard-camera-chip b {
@@ -469,6 +480,16 @@ h1 {
   margin: 9px 0 0;
   color: #75808d;
   font-size: 10px;
+}
+
+.dashboard-total-note {
+  margin: -4px 12px 0;
+  color: #a9c0c8;
+}
+
+.civil-tcp-section .tcp-report-card {
+  background: linear-gradient(135deg, #f29a47 0%, #ffb15f 100%);
+  box-shadow: 0 4px 11px rgba(242, 154, 71, 0.22);
 }
 
 .dashboard-console .chart-card {

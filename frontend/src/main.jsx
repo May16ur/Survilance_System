@@ -438,6 +438,10 @@ function App() {
             cameras={cameras}
             cameraStats={cameraStats}
             refresh={() => loadDashboard(true)}
+            openCameraLogs={(cameraId) => {
+              setActiveTab("logs");
+              loadCameraLogs(cameraId);
+            }}
           />
         )}
 

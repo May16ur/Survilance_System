@@ -2044,9 +2044,23 @@ def get_camera_comparison_stats():
             matched = int(rep.get("matched_count") or 0)
             waiting = int(rep.get("waiting_count") or 0)
             remaining = max(pair_total - (matched * 2), 0)
+            report_rows = rep.get("rows") or []
+            matched_mil = sum(
+                1 for row in report_rows
+                if row.get("matched") and class_bucket(row.get("class_name"), row.get("class_id")) == "mil"
+            )
+            matched_civil = sum(
+                1 for row in report_rows
+                if row.get("matched") and class_bucket(row.get("class_name"), row.get("class_id")) == "civil"
+            )
+            mil_total = int(stats_a.get("mil", 0)) + int(stats_b.get("mil", 0))
+            civil_total = int(stats_a.get("civil", 0)) + int(stats_b.get("civil", 0))
+            mil_remaining = max(mil_total - (matched_mil * 2), 0)
+            civil_remaining = max(civil_total - (matched_civil * 2), 0)
         except Exception as e:
             print("Camera comparison pair error", key, e)
             total_a = total_b = pair_total = matched = waiting = remaining = 0
+            mil_total = civil_total = matched_mil = matched_civil = mil_remaining = civil_remaining = 0
 
         pairs[key] = {
             "tcp_key": key,
@@ -2061,6 +2075,12 @@ def get_camera_comparison_stats():
             "matched_count": matched,
             "remaining": remaining,
             "remaining_count": remaining,
+            "mil_total": mil_total,
+            "mil_matched": matched_mil,
+            "mil_remaining": mil_remaining,
+            "civil_total": civil_total,
+            "civil_matched": matched_civil,
+            "civil_remaining": civil_remaining,
             "waiting_rows": waiting,
             "out_seen_count": matched,
             "remaining_rows": [],
