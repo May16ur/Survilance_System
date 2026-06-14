@@ -419,7 +419,7 @@ function App() {
           </>
         )}
 
-        {activeTab !== "dashboard" && (
+        {activeTab !== "dashboard" && activeTab !== "tcp" && (
           <section className="metric-row">
             <Metric label="Today Total" value={totals.total} />
             <Metric label="Military" value={totals.mil} />
