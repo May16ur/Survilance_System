@@ -1339,14 +1339,17 @@ h1 {
   position: relative;
 }
 
-.bar-track .bar-value {
+.bar-track {
+  position: relative;
+}
+
+.bar-track > .bar-value {
   position: absolute;
   left: 50%;
-  bottom: calc(100% + 5px);
   transform: translateX(-50%);
   color: #40515e;
-  font-style: normal;
   white-space: nowrap;
+  z-index: 2;
 }
 
 .chart-card-head > div > span {

@@ -89,14 +89,18 @@ export function BarChart({ title, labels = [], values = [], color, seriesLabel }
             {points.map((point) => (
               <div className="bar-column" key={point.label}>
                 <div className="bar-track">
+                  <span
+                    className="bar-value"
+                    style={{ bottom: `calc(${(point.value / tickMax) * 100}% + 5px)` }}
+                  >
+                    {formatNumber(point.value)}
+                  </span>
                   <i
                     style={{
                       height: `${(point.value / tickMax) * 100}%`,
                       background: color,
                     }}
-                  >
-                    <span className="bar-value">{formatNumber(point.value)}</span>
-                  </i>
+                  />
                 </div>
                 <span className="bar-label">{point.label}</span>
               </div>
