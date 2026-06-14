@@ -1652,7 +1652,13 @@ def get_dashboard_stats(camera_name=None, days=7, start_date=None, end_date=None
         d=start
         while d<=end:
             key=d.strftime("%Y-%m-%d"); label=d.strftime("%d-%m"); r=trend.get(key,{})
-            dates.append(label); mil.append(int(r.get('mil_count') or 0)); civil.append(int(r.get('civil_count') or 0)); total.append(int(r.get('total_count') or 0)); d+=datetime.timedelta(days=1)
+            dates.append(label)
+            mil_value = int(r.get('mil_count') or 0)
+            civil_value = int(r.get('civil_count') or 0)
+            mil.append(mil_value)
+            civil.append(civil_value)
+            total.append(mil_value + civil_value)
+            d+=datetime.timedelta(days=1)
 
         week_start = max(start, end - datetime.timedelta(days=6))
         month_start = max(start, end.replace(day=1))
@@ -1671,7 +1677,9 @@ def get_dashboard_stats(camera_name=None, days=7, start_date=None, end_date=None
         tr=cur.fetchone() or {}
         logs=fetch_recent_logs(camera_name=camera_name, limit=10)
         cur.close(); conn.close()
-        return {"dates":dates,"mil":mil,"civil":civil,"total":total,"today_total":int(tr.get('c') or 0),"today_mil":int(tr.get('m') or 0),"today_civil":int(tr.get('cv') or 0),"week_total":sum(total),"week_mil":sum(mil),"week_civil":sum(civil),"total_mil":sum(mil),"total_civil":sum(civil),"week_pie":[week_mil,week_civil],"month_pie":[month_mil,month_civil],"year_pie":[year_mil,year_civil],"logs":logs,"report_rows":[],"report_total":0,"report_range":{"from":start.strftime('%Y-%m-%d'),"to":end.strftime('%Y-%m-%d')}}
+        today_mil = int(tr.get('m') or 0)
+        today_civil = int(tr.get('cv') or 0)
+        return {"dates":dates,"mil":mil,"civil":civil,"total":total,"today_total":today_mil+today_civil,"today_mil":today_mil,"today_civil":today_civil,"week_total":sum(mil)+sum(civil),"week_mil":sum(mil),"week_civil":sum(civil),"total_mil":sum(mil),"total_civil":sum(civil),"week_pie":[week_mil,week_civil],"month_pie":[month_mil,month_civil],"year_pie":[year_mil,year_civil],"logs":logs,"report_rows":[],"report_total":0,"report_range":{"from":start.strftime('%Y-%m-%d'),"to":end.strftime('%Y-%m-%d')}}
     except Exception as e:
         print("Dashboard stats error:", e); return {"dates":[],"mil":[],"civil":[],"total":[],"today_total":0,"today_mil":0,"today_civil":0,"week_total":0,"week_mil":0,"week_civil":0,"logs":[],"report_rows":[]}
 
@@ -1690,9 +1698,9 @@ def get_camera_sum_vs_dashboard(date_value=None):
         # Dashboard total (no camera filter)
         cur.execute(f"SELECT COUNT(*) c, SUM(CASE WHEN class_id=0 OR LOWER(COALESCE(class_name,'')) LIKE '%mil%' THEN 1 ELSE 0 END) m, SUM(CASE WHEN class_id=1 OR LOWER(COALESCE(class_name,'')) LIKE '%civil%' THEN 1 ELSE 0 END) cv FROM vehicle_logs WHERE {date_expr}=%s", (count_date,))
         dashboard_row = cur.fetchone() or {}
-        dashboard_total = int(dashboard_row.get('c') or 0)
         dashboard_mil = int(dashboard_row.get('m') or 0)
         dashboard_civ = int(dashboard_row.get('cv') or 0)
+        dashboard_total = dashboard_mil + dashboard_civ
         
         # Get sum of all individual cameras
         camera_sums = []
@@ -2080,8 +2088,8 @@ def get_camera_comparison_stats():
         try:
             stats_a = _count_class_totals_for_camera_name(cam_a, today, today)
             stats_b = _count_class_totals_for_camera_name(cam_b, today, today)
-            total_a = int(stats_a.get("total", 0))
-            total_b = int(stats_b.get("total", 0))
+            total_a = int(stats_a.get("mil", 0)) + int(stats_a.get("civil", 0))
+            total_b = int(stats_b.get("mil", 0)) + int(stats_b.get("civil", 0))
             pair_total = total_a + total_b
             rep = build_tcp_report_rows(key, limit=5000, start_date=today, end_date=today)
             matched = int(rep.get("matched_count") or 0)
@@ -2233,7 +2241,7 @@ def _count_class_totals_for_camera_name(camera_name, start_date, end_date):
         cur.close()
         conn.close()
         return {
-            "total": int(row.get("total_count") or 0),
+            "total": int(row.get("mil_count") or 0) + int(row.get("civil_count") or 0),
             "mil": int(row.get("mil_count") or 0),
             "civil": int(row.get("civil_count") or 0),
         }
@@ -2286,12 +2294,14 @@ def get_camera_today_db_stats(camera_id=None, camera_name=None, date_value=None)
         cur.close()
         conn.close()
 
+        today_mil = int(r.get("mil_count") or 0)
+        today_civil = int(r.get("civil_count") or 0)
         return {
             "success": True,
             "camera_name": camera_name or "All Cameras",
-            "today_mil": int(r.get("mil_count") or 0),
-            "today_civil": int(r.get("civil_count") or 0),
-            "today_total": int(r.get("total_count") or 0),
+            "today_mil": today_mil,
+            "today_civil": today_civil,
+            "today_total": today_mil + today_civil,
             "source": "vehicle_logsnew.vehicle_logs",
             "date": count_date,
         }

@@ -15,10 +15,10 @@ export function LogsPanel({
 }) {
   const camera = cameras.find((item) => Number(item.id) === Number(selectedCamera));
   const kpis = [
-    { label: "Today's Vehicles", value: cameraDashboard?.today_total || 0, icon: Activity, tone: "cyan" },
+    { label: "Today's Vehicles", value: Number(cameraDashboard?.today_mil || 0) + Number(cameraDashboard?.today_civil || 0), icon: Activity, tone: "cyan" },
     { label: "Military Vehicles", value: cameraDashboard?.today_mil || 0, icon: Shield, tone: "emerald" },
     { label: "Civil Vehicles", value: cameraDashboard?.today_civil || 0, icon: CarFront, tone: "amber" },
-    { label: "Last 7 Days", value: cameraDashboard?.week_total || 0, icon: CalendarDays, tone: "violet" },
+    { label: "Last 7 Days", value: Number(cameraDashboard?.week_mil || 0) + Number(cameraDashboard?.week_civil || 0), icon: CalendarDays, tone: "violet" },
   ];
 
   return (

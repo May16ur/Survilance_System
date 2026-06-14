@@ -27,7 +27,7 @@ export function StreamsPanel({
                 <strong>{camera.name}</strong>
                 <span>Camera {camera.id}</span>
               </div>
-              <b>{cameraStats[camera.id]?.today_total || 0}</b>
+              <b>{Number(cameraStats[camera.id]?.today_mil || 0) + Number(cameraStats[camera.id]?.today_civil || 0)}</b>
             </div>
             <input value={camera.url} onChange={(event) => updateCameraUrl(camera.id, event.target.value)} placeholder="RTSP URL" />
             <div className="camera-preview">

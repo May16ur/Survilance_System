@@ -1,7 +1,6 @@
 import {
   Activity,
   BarChart3,
-  Bell,
   Camera,
   Database,
   FileVideo,
@@ -40,5 +39,4 @@ export const TABS = [
   { id: "tcp", label: "TCP Tables", icon: Activity },
   { id: "vehicles", label: "Vehicle Master", icon: Users },
   { id: "alerts", label: "Alerts", icon: ShieldAlert },
-  { id: "receiver", label: "Receiver", icon: Bell },
 ];

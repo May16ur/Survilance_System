@@ -148,10 +148,10 @@ export function DashboardPanel({ dashboard, comparison, diagnostic, sundayMilita
     const live = comparisonPairs[fallback.key] || {};
     return { ...fallback, ...live, label: fallback.label };
   });
-  const todayTotal = Number(dashboard?.today_total ?? comparison?.today_total ?? 0);
   const todayMil = Number(dashboard?.today_mil ?? 0);
   const todayCivil = Number(dashboard?.today_civil ?? 0);
-  const weeklyTotal = Number(dashboard?.week_total ?? 0);
+  const todayTotal = todayMil + todayCivil;
+  const weeklyTotal = Number(dashboard?.week_mil || 0) + Number(dashboard?.week_civil || 0);
   const dailyTotals = dashboard?.total || [];
   const yesterdayTotal = Number(dailyTotals[dailyTotals.length - 2] || 0);
   const dailyChange = yesterdayTotal ? ((todayTotal - yesterdayTotal) / yesterdayTotal) * 100 : 0;
@@ -212,7 +212,7 @@ export function DashboardPanel({ dashboard, comparison, diagnostic, sundayMilita
             >
               <i className="camera-live-dot" />
               <span>{camera.name}</span>
-              <b>{cameraStats[camera.id]?.today_total || 0}</b>
+              <b>{Number(cameraStats[camera.id]?.today_mil || 0) + Number(cameraStats[camera.id]?.today_civil || 0)}</b>
             </button>
           ))}
         </div>

@@ -30,7 +30,7 @@ const TCP_MARKERS = [
 function createCameraPopupHtml(cam, stats) {
   const mil = stats.today_mil || 0;
   const civil = stats.today_civil || 0;
-  const total = stats.today_total || (mil + civil);
+  const total = mil + civil;
   return `
     <div class="map-popup-card">
       <div class="map-popup-title">${cam.title}</div>
@@ -208,7 +208,7 @@ export function MapPanel({ cameraStats, onViewStreams, onViewLogs, onViewTcp }) 
                   <span className="cam-id">{cam.id}.</span>
                   {cam.title}
                 </div>
-                <span className="cam-total-badge">{stats.today_total}</span>
+                <span className="cam-total-badge">{Number(stats.today_mil || 0) + Number(stats.today_civil || 0)}</span>
               </button>
             );
           })}

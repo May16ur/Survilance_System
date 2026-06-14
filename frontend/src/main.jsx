@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Activity, RefreshCw } from "lucide-react";
+import { Activity } from "lucide-react";
 import { getJson } from "./lib/api.js";
 import { DEFAULT_CAMERAS, TCP_OPTIONS, TABS } from "./lib/constants.js";
 import { Metric } from "./components/Metric.jsx";
@@ -12,7 +12,6 @@ import { ReportsPanel } from "./features/ReportsPanel.jsx";
 import { TcpPanel } from "./features/TcpPanel.jsx";
 import { VehicleMasterPanel } from "./features/VehicleMasterPanel.jsx";
 import { AlertsPanel } from "./features/AlertsPanel.jsx";
-import { ReceiverTable } from "./features/ReceiverTable.jsx";
 import { MapPanel } from "./features/MapPanel.jsx";
 import leftLogo from "./assets/etcp-left-logo.png";
 import rightLogo from "./assets/etcp-right-logo.png";
@@ -31,7 +30,6 @@ function App() {
   const [cameraLogs, setCameraLogs] = useState([]);
   const [cameraLogDashboard, setCameraLogDashboard] = useState(null);
   const [selectedCamera, setSelectedCamera] = useState(1);
-  const [notifications, setNotifications] = useState([]);
   const [blacklist, setBlacklist] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [plateSearch, setPlateSearch] = useState("");
@@ -45,7 +43,6 @@ function App() {
   const [reportFilters, setReportFilters] = useState({ vehicle_type: "all", camera_id: "", start_date: "", end_date: "" });
   const [tcpName, setTcpName] = useState("kiari");
   const [tcpReport, setTcpReport] = useState(null);
-  const [tcpDashboard, setTcpDashboard] = useState(null);
   const [remaining, setRemaining] = useState(null);
   const [vehicleMaster, setVehicleMaster] = useState([]);
   const uploadRef = useRef(null);
@@ -54,7 +51,6 @@ function App() {
     loadAppConfig();
     refreshHealth();
     refreshCounters();
-    refreshNotifications();
     refreshBlacklist();
     loadDashboard();
     loadVehicleMaster();
@@ -64,7 +60,6 @@ function App() {
     const timer = setInterval(() => {
       refreshCounters();
       if (activeTab === "dashboard") loadDashboard(false);
-      if (activeTab === "receiver") refreshNotifications();
       if (activeTab === "alerts") refreshBlacklist();
       if (activeTab === "logs") loadCameraLogs(selectedCamera);
       if (activeTab === "upload" && uploadRunning) loadUploadLogs();
@@ -259,15 +254,6 @@ function App() {
     }
   }
 
-  async function refreshNotifications() {
-    try {
-      const data = await getJson("/api/notifications/recent?limit=100");
-      setNotifications(data.events || []);
-    } catch {
-      setNotifications([]);
-    }
-  }
-
   async function refreshBlacklist() {
     try {
       const [list, alertData] = await Promise.all([
@@ -331,12 +317,8 @@ function App() {
 
   async function loadTcpReport(name = tcpName) {
     setTcpName(name);
-    const [data, dashboardData] = await Promise.all([
-      getJson(`/api/tcp_table/${name}?limit=1000`),
-      getJson(`/api/tcp_dashboard/${name}`),
-    ]);
+    const data = await getJson(`/api/tcp_table/${name}?limit=1000`);
     setTcpReport(data);
-    setTcpDashboard(dashboardData);
     const rem = await getJson(`/api/remaining_vehicles?group=${name}`);
     setRemaining(rem);
   }
@@ -350,7 +332,6 @@ function App() {
     const data = await getJson("/api/vehicle_master/import_excel", { method: "POST" });
     setStatus(data.message || "Vehicle Excel imported.");
     loadVehicleMaster();
-    refreshNotifications();
     if (activeTab === "logs") loadCameraLogs(selectedCamera);
     if (activeTab === "tcp") loadTcpReport(tcpName);
   }
@@ -383,7 +364,7 @@ function App() {
   const totals = useMemo(() => {
     return Object.values(cameraStats).reduce(
       (acc, item) => ({
-        total: acc.total + Number(item.today_total || 0),
+        total: acc.total + Number(item.today_mil || 0) + Number(item.today_civil || 0),
         mil: acc.mil + Number(item.today_mil || 0),
         civil: acc.civil + Number(item.today_civil || 0),
       }),
@@ -443,7 +424,6 @@ function App() {
             <Metric label="Today Total" value={totals.total} />
             <Metric label="Military" value={totals.mil} />
             <Metric label="Civil" value={totals.civil} />
-            <Metric label="Receiver Events" value={notifications.length} />
           </section>
         )}
 
@@ -532,7 +512,6 @@ function App() {
             tcpName={tcpName}
             tcpOptions={tcpOptions}
             tcpReport={tcpReport}
-            tcpDashboard={tcpDashboard}
             remaining={remaining}
             loadTcpReport={loadTcpReport}
           />
@@ -553,15 +532,6 @@ function App() {
             deleteBlacklist={deleteBlacklist}
             searchPlate={searchPlate}
           />
-        )}
-
-        {activeTab === "receiver" && (
-          <section className="panel">
-            <div className="panel-toolbar">
-              <button onClick={refreshNotifications}><RefreshCw size={17} /> Refresh Events</button>
-            </div>
-            <ReceiverTable events={notifications} />
-          </section>
         )}
 
       </section>
