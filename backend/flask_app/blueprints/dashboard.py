@@ -121,6 +121,9 @@ def api_tcp_dashboard(tcp_name):
     return jsonify({
         "success": True,
         "tcp_name": key,
+        "dates": [report_date.strftime("%d-%m") for report_date in dates],
+        "mil": mil,
+        "civil": civil,
         "today_mil": mil[-1] if mil else 0,
         "today_civil": civil[-1] if civil else 0,
         "week_total": sum(mil) + sum(civil),

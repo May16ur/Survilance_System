@@ -1,5 +1,6 @@
 import { Activity, CalendarDays, CarFront, RefreshCw, Shield } from "lucide-react";
 import { SimpleTable, TcpTable } from "../components/Tables.jsx";
+import { BarChart, CHART_COLORS } from "../components/Charts.jsx";
 
 export function TcpPanel({ tcpName, tcpOptions, tcpReport, tcpDashboard, remaining, loadTcpReport }) {
   const todayMil = Number(tcpDashboard?.today_mil || 0);
@@ -31,6 +32,22 @@ export function TcpPanel({ tcpName, tcpOptions, tcpReport, tcpDashboard, remaini
             <small>{tcpLabel}</small>
           </article>
         ))}
+      </div>
+      <div className="dashboard-chart-grid tcp-dashboard-charts">
+        <BarChart
+          title="Military Vehicles (Last 7 Days)"
+          labels={tcpDashboard?.dates || []}
+          values={tcpDashboard?.mil || []}
+          color={CHART_COLORS.military}
+          seriesLabel="Military Vehicles"
+        />
+        <BarChart
+          title="Civil Vehicles (Last 7 Days)"
+          labels={tcpDashboard?.dates || []}
+          values={tcpDashboard?.civil || []}
+          color={CHART_COLORS.civil}
+          seriesLabel="Civil Vehicles"
+        />
       </div>
       <TcpTable rows={tcpReport?.rows || []} />
       <SimpleTable
