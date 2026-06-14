@@ -12,7 +12,7 @@ const DEFAULT_TCP_REPORTS = [
   { key: "chushul", label: "Chushul TCP" },
 ];
 
-export function TcpReportGroup({ title, pairs, type }) {
+function TcpReportGroup({ title, pairs, type }) {
   const isMilitary = type === "mil";
   return (
     <div className={`dashboard-section tcp-report-section ${isMilitary ? "military-tcp-section" : "civil-tcp-section"}`}>

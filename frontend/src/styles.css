@@ -1619,12 +1619,6 @@ h1 {
   max-height: 360px;
 }
 
-.logs-tcp-reports {
-  display: grid;
-  gap: 14px;
-  margin-bottom: 14px;
-}
-
 .empty-preview {
   height: 100%;
   color: #bac4cf;

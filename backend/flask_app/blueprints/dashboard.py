@@ -8,6 +8,7 @@ from core.common import (
     get_camera_today_db_stats,
     get_camera_sum_vs_dashboard,
     get_sunday_military_report,
+    TCP_PAIR_MAP,
 )
 from flask_app.blueprints.route_utils import cache_get, cache_set
 
@@ -94,6 +95,50 @@ def api_count_diagnostic():
 def api_remaining_vehicles():
     group = request.args.get("group", "kiari")
     return jsonify(get_remaining_vehicle_rows(group=group))
+
+
+@bp.route("/api/tcp_dashboard/<tcp_name>")
+def api_tcp_dashboard(tcp_name):
+    key = str(tcp_name or "").strip().lower()
+    if key not in TCP_PAIR_MAP:
+        return jsonify({"success": False, "message": "Invalid TCP name"}), 400
+
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    cache_key = f"tcp_dashboard:{key}:{start_date or ''}:{end_date or ''}"
+    cached = cache_get(cache_key, 20)
+    if cached is not None:
+        return jsonify(cached)
+
+    camera_names = TCP_PAIR_MAP[key]
+    camera_stats = [
+        get_dashboard_stats(camera_name=name, start_date=start_date, end_date=end_date)
+        for name in camera_names
+    ]
+    dates = next((row.get("dates") for row in camera_stats if row.get("dates")), [])
+
+    def sum_series(field):
+        return [
+            sum(int(row.get(field, [])[index] or 0) if index < len(row.get(field, [])) else 0 for row in camera_stats)
+            for index in range(len(dates))
+        ]
+
+    mil = sum_series("mil")
+    civil = sum_series("civil")
+    total = [mil[index] + civil[index] for index in range(len(dates))]
+    data = {
+        "success": True,
+        "tcp_name": key,
+        "dates": dates,
+        "mil": mil,
+        "civil": civil,
+        "total": total,
+        "today_total": sum(int(row.get("today_total") or 0) for row in camera_stats),
+        "today_mil": sum(int(row.get("today_mil") or 0) for row in camera_stats),
+        "today_civil": sum(int(row.get("today_civil") or 0) for row in camera_stats),
+        "week_total": sum(total),
+    }
+    return jsonify(cache_set(cache_key, data))
 
 
 @bp.route("/api/sunday_military_report")
