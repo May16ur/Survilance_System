@@ -292,6 +292,190 @@ h1 {
   gap: 14px;
 }
 
+.dashboard-workspace {
+  background:
+    radial-gradient(circle at 18% 8%, rgba(25, 177, 133, 0.14), transparent 28%),
+    radial-gradient(circle at 88% 82%, rgba(24, 94, 126, 0.22), transparent 32%),
+    linear-gradient(rgba(10, 28, 39, 0.92), rgba(11, 25, 36, 0.97));
+}
+
+.dashboard-workspace .site-banner {
+  margin-bottom: 10px;
+}
+
+.dashboard-workspace .topbar {
+  margin-bottom: 10px;
+  color: #ffffff;
+}
+
+.dashboard-workspace .eyebrow {
+  color: #8fd5bf;
+}
+
+.dashboard-console {
+  display: grid;
+  gap: 12px;
+}
+
+.dashboard-section {
+  padding: 12px;
+  border: 1px solid rgba(211, 222, 230, 0.85);
+  border-radius: 10px;
+  background: rgba(251, 253, 254, 0.96);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.16);
+}
+
+.dashboard-section h2 {
+  margin: 0 0 10px;
+  color: #16785b;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 16px;
+  text-transform: uppercase;
+}
+
+.dashboard-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-refresh {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 0;
+  background: #e4f5ef;
+  color: #16785b;
+  font-size: 11px;
+}
+
+.dashboard-refresh:hover {
+  background: #ccecdf;
+}
+
+.dashboard-camera-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dashboard-camera-chip {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #11b989, #24c391);
+  color: #ffffff;
+  box-shadow: 0 2px 7px rgba(17, 185, 137, 0.26);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dashboard-camera-chip b {
+  min-width: 20px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  text-align: center;
+  font-size: 10px;
+}
+
+.dashboard-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(211, 222, 230, 0.85);
+  border-radius: 10px;
+  background: rgba(251, 253, 254, 0.96);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.16);
+}
+
+.dashboard-summary-card,
+.tcp-report-card {
+  color: #ffffff;
+  background: linear-gradient(135deg, #12b987 0%, #27c798 100%);
+  box-shadow: 0 4px 11px rgba(17, 185, 137, 0.2);
+}
+
+.dashboard-summary-card {
+  min-height: 82px;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.dashboard-summary-card span,
+.dashboard-summary-card strong {
+  display: block;
+}
+
+.dashboard-summary-card span {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dashboard-summary-card strong {
+  margin-top: 8px;
+  font-size: 26px;
+}
+
+.tcp-report-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(105px, 1fr));
+  gap: 8px;
+}
+
+.tcp-report-card {
+  min-height: 108px;
+  padding: 11px;
+  border-radius: 8px;
+}
+
+.tcp-report-card span,
+.tcp-report-card strong,
+.tcp-report-card small {
+  display: block;
+}
+
+.tcp-report-card span {
+  min-height: 28px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tcp-report-card strong {
+  margin: 3px 0 7px;
+  font-size: 25px;
+}
+
+.tcp-report-card small {
+  margin-top: 2px;
+  font-size: 9px;
+}
+
+.tcp-report-empty {
+  grid-column: 1 / -1;
+  padding: 20px;
+  border: 1px dashed #9bcbbd;
+  border-radius: 8px;
+  color: #66717f;
+  text-align: center;
+  font-size: 12px;
+}
+
+.tcp-report-note {
+  margin: 9px 0 0;
+  color: #75808d;
+  font-size: 10px;
+}
+
+.dashboard-console .chart-card {
+  background: rgba(251, 253, 254, 0.98);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.16);
+}
+
 .chart-card {
   min-width: 0;
   padding: 14px;
@@ -790,6 +974,14 @@ code {
     grid-template-columns: 1fr;
   }
 
+  .dashboard-summary-grid {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+
+  .tcp-report-grid {
+    grid-template-columns: repeat(3, minmax(110px, 1fr));
+  }
+
   .donut-layout {
     flex-wrap: wrap;
   }
@@ -800,6 +992,18 @@ code {
 
   .map-sidebar-list {
     max-height: 300px;
+  }
+}
+
+@media (max-width: 560px) {
+  .dashboard-summary-grid,
+  .tcp-report-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-camera-chip {
+    width: 100%;
+    justify-content: space-between;
   }
 }
 

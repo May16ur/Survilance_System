@@ -403,7 +403,7 @@ function App() {
         </nav>
       </aside>
 
-      <section className="workspace">
+      <section className={`workspace ${activeTab === "dashboard" ? "dashboard-workspace" : ""}`}>
         <div className="site-banner">
           <img src={leftLogo} alt="e-TCP left insignia" />
           <div className="site-banner-copy">
@@ -421,12 +421,14 @@ function App() {
           <div className="status-pill">{status}</div>
         </header>
 
-        <section className="metric-row">
-          <Metric label="Today Total" value={totals.total} />
-          <Metric label="Military" value={totals.mil} />
-          <Metric label="Civil" value={totals.civil} />
-          <Metric label="Receiver Events" value={notifications.length} />
-        </section>
+        {activeTab !== "dashboard" && (
+          <section className="metric-row">
+            <Metric label="Today Total" value={totals.total} />
+            <Metric label="Military" value={totals.mil} />
+            <Metric label="Civil" value={totals.civil} />
+            <Metric label="Receiver Events" value={notifications.length} />
+          </section>
+        )}
 
         {activeTab === "dashboard" && (
           <DashboardPanel
