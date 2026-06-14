@@ -25,9 +25,18 @@ function TcpReportGroup({ title, pairs, type }) {
           return (
             <article className="tcp-report-card" key={`${type}-${pair.key}`}>
               <span>{pair.label}</span>
-              <strong>{Number(total || 0).toLocaleString()}</strong>
-              <small>Veh Out: {matched || 0}</small>
-              <small>Local Veh: {remaining || 0}</small>
+              {isMilitary ? (
+                <>
+                  <strong>{Number(total || 0).toLocaleString()}</strong>
+                  <small>Veh Out: {matched || 0}</small>
+                  <small>Local Veh: {remaining || 0}</small>
+                </>
+              ) : (
+                <>
+                  <strong>{Number(matched || 0).toLocaleString()}</strong>
+                  <small>Vehicles Crossed</small>
+                </>
+              )}
             </article>
           );
         })}
