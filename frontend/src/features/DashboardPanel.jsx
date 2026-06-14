@@ -1,6 +1,6 @@
 import { Activity, CalendarDays, CarFront, RefreshCw, Search, Shield, TrendingDown, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
-import { BarChart, CHART_COLORS, GroupedBarChart } from "../components/Charts.jsx";
+import { BarChart, CHART_COLORS } from "../components/Charts.jsx";
 
 const DEFAULT_TCP_REPORTS = [
   { key: "igoo", label: "IGOO TCP" },
@@ -250,12 +250,6 @@ export function DashboardPanel({ dashboard, comparison, diagnostic, sundayMilita
       </div>
 
       <SpeedReport pairs={pairs} />
-      <GroupedBarChart
-        title="Over Speed by TCP"
-        labels={pairs.map((pair) => pair.label.replace(" TCP", ""))}
-        military={pairs.map((pair) => pair.mil_over_speed || 0)}
-        civil={pairs.map((pair) => pair.civil_over_speed || 0)}
-      />
       <SundayMilitaryReport report={sundayMilitary} />
     </section>
   );

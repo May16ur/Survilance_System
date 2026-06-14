@@ -1,5 +1,5 @@
 const MILITARY_COLOR = "#3d9f78";
-const CIVIL_COLOR = "#ffa654";
+const CIVIL_COLOR = "#3987a8";
 const GRID_COLOR = "#dfe5eb";
 
 function formatNumber(value) {
