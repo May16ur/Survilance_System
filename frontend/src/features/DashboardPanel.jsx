@@ -20,8 +20,8 @@ function TcpReportGroup({ title, pairs, type }) {
       <div className="tcp-report-grid">
         {pairs.map((pair) => {
           const total = isMilitary ? pair.mil_total : pair.civil_total;
-          const matched = isMilitary ? pair.mil_matched : pair.civil_matched;
-          const remaining = isMilitary ? pair.mil_remaining : pair.civil_remaining;
+          const matched = isMilitary ? pair.mil_veh_out : pair.civil_matched;
+          const remaining = isMilitary ? pair.mil_local : pair.civil_remaining;
           return (
             <article className="tcp-report-card" key={`${type}-${pair.key}`}>
               <span>{pair.label}</span>

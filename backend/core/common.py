@@ -134,6 +134,17 @@ log_lock = threading.Lock()
 logs_dict = {"uploadLogs": {}, "streamLogs": {}}
 license_text_cache = {}
 vehicle_details_cache = {"mtime": None, "rows": {}}
+local_vehicle_cache = {"signature": None, "plates": {}}
+LOCAL_VEHICLE_DIR = os.path.join(BASE_DIR, "local_veh")
+LOCAL_VEHICLE_FILES = {
+    "igoo": "Igoo_local_vehs.xlsx",
+    "kiari": "Kiari_local_vehs.xlsx",
+    "cthang": "chumatang_local_vehs.xlsx",
+    "nyoma": "Nyoma_local_vehs.xlsx",
+    "loma": "Loma_local_vehs.xlsx",
+    "hanle": "Hanle_local_vehs.xlsx",
+    "chushul": "Chushul_local_vehs.xlsx",
+}
 
 DEFAULT_CAMERA_POLYGONS = {
     1: np.array([[10, 70], [480, 70], [454, 354], [20, 348]], dtype=np.int32),
@@ -2089,6 +2100,17 @@ def get_camera_comparison_stats():
             civil_total = int(stats_a.get("civil", 0)) + int(stats_b.get("civil", 0))
             mil_remaining = max(mil_total - (matched_mil * 2), 0)
             civil_remaining = max(civil_total - (matched_civil * 2), 0)
+            local_military_plates = get_local_military_plates(key)
+            military_rows = [
+                row for row in report_rows
+                if class_bucket(row.get("class_name"), row.get("class_id")) == "mil"
+            ]
+            mil_total = len(military_rows)
+            mil_local = sum(
+                1 for row in military_rows
+                if normalize_match_license(row.get("license")) in local_military_plates
+            )
+            mil_veh_out = len(military_rows) - mil_local
             mil_over_speed = sum(
                 1 for row in report_rows
                 if class_bucket(row.get("class_name"), row.get("class_id")) == "mil"
@@ -2104,6 +2126,7 @@ def get_camera_comparison_stats():
             total_a = total_b = pair_total = matched = waiting = remaining = 0
             mil_total = civil_total = matched_mil = matched_civil = mil_remaining = civil_remaining = 0
             mil_over_speed = civil_over_speed = 0
+            mil_local = mil_veh_out = 0
 
         pairs[key] = {
             "tcp_key": key,
@@ -2121,6 +2144,8 @@ def get_camera_comparison_stats():
             "mil_total": mil_total,
             "mil_matched": matched_mil,
             "mil_remaining": mil_remaining,
+            "mil_local": mil_local,
+            "mil_veh_out": mil_veh_out,
             "civil_total": civil_total,
             "civil_matched": matched_civil,
             "civil_remaining": civil_remaining,
@@ -2148,6 +2173,42 @@ def get_camera_comparison_stats():
         out[f"{k}_matched"] = p["matched"]
         out[f"{k}_remaining"] = p["remaining"]
     return out
+
+
+def get_local_military_plates(tcp_key):
+    paths = {
+        key: os.path.join(LOCAL_VEHICLE_DIR, filename)
+        for key, filename in LOCAL_VEHICLE_FILES.items()
+    }
+    signature = tuple(
+        (key, os.path.getmtime(path) if os.path.exists(path) else None)
+        for key, path in sorted(paths.items())
+    )
+    if local_vehicle_cache["signature"] != signature:
+        plate_sets = {}
+        for key, path in paths.items():
+            plates = set()
+            if os.path.exists(path):
+                rows = _read_first_xlsx_sheet_rows(path)
+                header_index = next(
+                    (
+                        index for index, row in enumerate(rows)
+                        if "VEH BA NO" in [str(value or "").strip().upper() for value in row]
+                    ),
+                    None,
+                )
+                if header_index is not None:
+                    header = [str(value or "").strip().upper() for value in rows[header_index]]
+                    plate_index = header.index("VEH BA NO")
+                    for row in rows[header_index + 1:]:
+                        raw_plate = row[plate_index] if plate_index < len(row) else ""
+                        plate = normalize_match_license(raw_plate)
+                        if plate:
+                            plates.add(plate)
+            plate_sets[key] = plates
+        local_vehicle_cache["signature"] = signature
+        local_vehicle_cache["plates"] = plate_sets
+    return local_vehicle_cache["plates"].get(str(tcp_key or "").lower(), set())
 
 
 def _count_class_totals_for_camera_name(camera_name, start_date, end_date):
