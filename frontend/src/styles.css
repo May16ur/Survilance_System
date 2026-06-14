@@ -1502,7 +1502,7 @@ h1 {
 }
 
 .bar-track {
-  width: min(34px, 72%);
+  width: min(48px, 82%);
   height: 100%;
   display: flex;
   align-items: flex-end;
