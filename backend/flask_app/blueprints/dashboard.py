@@ -1,3 +1,5 @@
+import datetime
+
 from flask import Blueprint, jsonify, request
 
 from core.common import (
@@ -8,6 +10,9 @@ from core.common import (
     get_camera_today_db_stats,
     get_camera_sum_vs_dashboard,
     get_sunday_military_report,
+    TCP_PAIR_MAP,
+    build_tcp_report_rows,
+    class_bucket,
 )
 from flask_app.blueprints.route_utils import cache_get, cache_set
 
@@ -94,6 +99,32 @@ def api_count_diagnostic():
 def api_remaining_vehicles():
     group = request.args.get("group", "kiari")
     return jsonify(get_remaining_vehicle_rows(group=group))
+
+
+@bp.route("/api/tcp_dashboard/<tcp_name>")
+def api_tcp_dashboard(tcp_name):
+    key = str(tcp_name or "").strip().lower()
+    if key not in TCP_PAIR_MAP:
+        return jsonify({"success": False, "message": "Invalid TCP name"}), 400
+
+    today = datetime.date.today()
+    dates = [today - datetime.timedelta(days=offset) for offset in range(6, -1, -1)]
+    mil = []
+    civil = []
+    for report_date in dates:
+        date_key = report_date.strftime("%Y-%m-%d")
+        report = build_tcp_report_rows(key, limit=5000, start_date=date_key, end_date=date_key)
+        rows = report.get("rows") or []
+        mil.append(sum(1 for row in rows if class_bucket(row.get("class_name"), row.get("class_id")) == "mil"))
+        civil.append(sum(1 for row in rows if class_bucket(row.get("class_name"), row.get("class_id")) == "civil"))
+
+    return jsonify({
+        "success": True,
+        "tcp_name": key,
+        "today_mil": mil[-1] if mil else 0,
+        "today_civil": civil[-1] if civil else 0,
+        "week_total": sum(mil) + sum(civil),
+    })
 
 
 @bp.route("/api/sunday_military_report")

@@ -2037,12 +2037,7 @@ def build_tcp_report_rows(tcp_name="all", limit=300, start_date=None, end_date=N
                     "time_out": _fmt_dt(second.get("det_time")) if second else _fmt_dt(inferred_time_out),
                     "speed": first.get("speed", ""),
                     "out_speed": second.get("speed", "") if second else "",
-                    "remarks": (
-                        f"Inferred civil crossing to {out_camera}; opposite camera missed detection "
-                        f"(estimated +{inferred_seconds}s)"
-                        if inferred_crossing
-                        else _tcp_out_remark(out_camera, matched=bool(second))
-                    ),
+                    "remarks": _tcp_out_remark(out_camera, matched=bool(second or inferred_crossing)),
                     "matched": bool(second),
                     "inferred_crossing": inferred_crossing,
                     "detected_count": 2 if second else 1,

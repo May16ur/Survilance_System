@@ -43,6 +43,7 @@ function App() {
   const [reportFilters, setReportFilters] = useState({ vehicle_type: "all", camera_id: "", start_date: "", end_date: "" });
   const [tcpName, setTcpName] = useState("kiari");
   const [tcpReport, setTcpReport] = useState(null);
+  const [tcpDashboard, setTcpDashboard] = useState(null);
   const [remaining, setRemaining] = useState(null);
   const [vehicleMaster, setVehicleMaster] = useState([]);
   const uploadRef = useRef(null);
@@ -317,8 +318,12 @@ function App() {
 
   async function loadTcpReport(name = tcpName) {
     setTcpName(name);
-    const data = await getJson(`/api/tcp_table/${name}?limit=1000`);
+    const [data, dashboardData] = await Promise.all([
+      getJson(`/api/tcp_table/${name}?limit=1000`),
+      getJson(`/api/tcp_dashboard/${name}`),
+    ]);
     setTcpReport(data);
+    setTcpDashboard(dashboardData);
     const rem = await getJson(`/api/remaining_vehicles?group=${name}`);
     setRemaining(rem);
   }
@@ -512,6 +517,7 @@ function App() {
             tcpName={tcpName}
             tcpOptions={tcpOptions}
             tcpReport={tcpReport}
+            tcpDashboard={tcpDashboard}
             remaining={remaining}
             loadTcpReport={loadTcpReport}
           />
