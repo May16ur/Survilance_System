@@ -63,7 +63,8 @@ export function BarChart({ title, labels = [], values = [], color, seriesLabel }
     value: Number(values[index] || 0),
   }));
   const maxValue = Math.max(1, ...points.map((point) => point.value));
-  const tickMax = maxValue <= 5 ? 5 : Math.ceil(maxValue / 5) * 5;
+  const tickStep = maxValue <= 5 ? 1 : Math.pow(10, Math.floor(Math.log10(maxValue))) / 2;
+  const tickMax = maxValue <= 5 ? 5 : Math.ceil((maxValue * 1.12) / tickStep) * tickStep;
   const ticks = [tickMax, Math.round(tickMax * 0.75), Math.round(tickMax * 0.5), Math.round(tickMax * 0.25), 0];
 
   return (
