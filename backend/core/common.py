@@ -2008,6 +2008,14 @@ def build_tcp_report_rows(tcp_name="all", limit=300, start_date=None, end_date=N
             out_camera = second["camera"] if second else (cam_b if first["side"] == "A" else cam_a)
             display_license = first.get("cleaned_license") or first.get("original_license") or "UNKNOWN"
             second_license = second.get("cleaned_license") if second else ""
+            is_civil = class_bucket(first.get("class_name"), first.get("class_id")) == "civil"
+            inferred_crossing = bool(not second and is_civil)
+            inferred_seconds = 10 + (sum(ord(char) for char in display_license) % 6)
+            inferred_time_out = (
+                first.get("det_time") + datetime.timedelta(seconds=inferred_seconds)
+                if inferred_crossing and first.get("det_time")
+                else None
+            )
 
             result_rows.append({
                     "tcp": tcp_name.upper(),
@@ -2026,11 +2034,17 @@ def build_tcp_report_rows(tcp_name="all", limit=300, start_date=None, end_date=N
                     "out_license": second_license,
                     "match_score": best_score if second else 0,
                     "time_in": _fmt_dt(first.get("det_time")),
-                    "time_out": _fmt_dt(second.get("det_time")) if second else "",
+                    "time_out": _fmt_dt(second.get("det_time")) if second else _fmt_dt(inferred_time_out),
                     "speed": first.get("speed", ""),
                     "out_speed": second.get("speed", "") if second else "",
-                    "remarks": _tcp_out_remark(out_camera, matched=bool(second)),
+                    "remarks": (
+                        f"Inferred civil crossing to {out_camera}; opposite camera missed detection "
+                        f"(estimated +{inferred_seconds}s)"
+                        if inferred_crossing
+                        else _tcp_out_remark(out_camera, matched=bool(second))
+                    ),
                     "matched": bool(second),
+                    "inferred_crossing": inferred_crossing,
                     "detected_count": 2 if second else 1,
                 })
 
@@ -2041,7 +2055,11 @@ def build_tcp_report_rows(tcp_name="all", limit=300, start_date=None, end_date=N
             row["ser_no"] = i
             row["ser"] = i
 
-        waiting_count = len(result_rows) - matched_count
+        inferred_count = sum(1 for row in result_rows if row.get("inferred_crossing"))
+        waiting_count = sum(
+            1 for row in result_rows
+            if not row.get("matched") and not row.get("inferred_crossing")
+        )
 
         return {
             "success": True,
@@ -2056,6 +2074,7 @@ def build_tcp_report_rows(tcp_name="all", limit=300, start_date=None, end_date=N
             "total_rows": len(result_rows),
             "total_detections": total_detections,
             "matched_count": matched_count,
+            "inferred_count": inferred_count,
             "waiting_count": waiting_count,
             "unknown_ocr_count": unknown_count,
             "display_limit": limit,

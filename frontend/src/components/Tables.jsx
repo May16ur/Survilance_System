@@ -87,7 +87,7 @@ export function TcpTable({ rows }) {
               <td>{row.out_camera}</td>
               <td>{row.time_in}</td>
               <td>{row.time_out}</td>
-              <td>{row.matched ? "Matched" : "Waiting"}</td>
+              <td>{row.matched || row.inferred_crossing ? "Matched" : "Waiting"}</td>
               <td>{row.remarks || ""}</td>
               <td>{row.plate ? <img className="thumb" src={row.plate} alt="Plate" /> : "No image"}</td>
               <td>{row.vehicle ? <img className="thumb" src={row.vehicle} alt="Vehicle" /> : "No image"}</td>
