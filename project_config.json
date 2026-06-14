@@ -10,7 +10,7 @@
       "name": "IGOO TCP to Leh",
       "tcp": "igoo",
       "direction": "IN",
-      "rtsp_url": "",
+      "rtsp_url": "rtsp://admin:Welcome%2A123@192.168.2.133:554/video/live?channel=1&subtype=0",
       "cp_plus_keys": []
     },
     {
@@ -18,7 +18,7 @@
       "name": "IGOO TCP to Kiari",
       "tcp": "igoo",
       "direction": "OUT",
-      "rtsp_url": "",
+      "rtsp_url": "rtsp://admin:Welcome%2A123@192.168.2.135:554/video/live?channel=1&subtype=0",
       "cp_plus_keys": [
        
       ]
@@ -50,7 +50,7 @@
       "name": "C/Thang to Kiari",
       "tcp": "cthang",
       "direction": "IN",
-      "rtsp_url": "",
+      "rtsp_url": "rtsp://admin:Welcome%2A123@192.168.2.136:554/video/live?channel=1&subtype=0",
       "cp_plus_keys": []
     },
     {
@@ -58,7 +58,7 @@
       "name": "C/Thang to Nyoma",
       "tcp": "cthang",
       "direction": "OUT",
-      "rtsp_url": "",
+      "rtsp_url": "rtsp://admin:Welcome%2A123@192.168.2.137:554/video/live?channel=1&subtype=0",
       "cp_plus_keys": []
     },
     {
@@ -122,7 +122,7 @@
       "name": "Chushul to Parma",
       "tcp": "chushul",
       "direction": "OUT",
-      "rtsp_url": "",
+      "rtsp_url": "rtsp://admin:admin123@192.168.2.142:554/cam/realmonitor?channel=1&subtype=1",
       "cp_plus_keys": []
     }
   ],
