@@ -1306,6 +1306,49 @@ h1 {
   background: #edf7f3;
 }
 
+.civil-tcp-section .tcp-report-card {
+  border-color: rgba(57, 135, 168, 0.42);
+  background: linear-gradient(145deg, #3987a8, #2d718f);
+  box-shadow: 0 5px 14px rgba(57, 135, 168, 0.18);
+}
+
+.civil-tcp-section .tcp-report-card span,
+.civil-tcp-section .tcp-report-card strong {
+  color: #ffffff;
+}
+
+.civil-tcp-section .tcp-report-card small {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.bar-plot {
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0,
+    transparent calc(14.2857% - 1px),
+    #dfe5e9 calc(14.2857% - 1px),
+    #dfe5e9 14.2857%
+  );
+}
+
+.bar-column {
+  grid-template-rows: 192px 38px;
+}
+
+.bar-track i {
+  position: relative;
+}
+
+.bar-track .bar-value {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 5px);
+  transform: translateX(-50%);
+  color: #40515e;
+  font-style: normal;
+  white-space: nowrap;
+}
+
 .chart-card-head > div > span {
   color: #7a8592;
   font-size: 11px;

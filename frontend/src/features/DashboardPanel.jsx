@@ -33,7 +33,7 @@ function TcpReportGroup({ title, pairs, type }) {
                 </>
               ) : (
                 <>
-                  <strong>{Number(matched || 0).toLocaleString()}</strong>
+                  <strong>{Number(total || 0).toLocaleString()}</strong>
                   <small>Vehicles Crossed</small>
                 </>
               )}
