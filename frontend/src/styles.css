@@ -1491,7 +1491,7 @@ h1 {
   min-width: 0;
   height: 100%;
   display: grid;
-  grid-template-rows: 18px 174px 38px;
+  grid-template-rows: 192px 38px;
   align-items: end;
   justify-items: center;
 }
