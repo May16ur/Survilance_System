@@ -502,6 +502,7 @@ function App() {
             running={running}
             startCamera={startCamera}
             stopCamera={stopCamera}
+            comparison={comparison}
           />
         )}
 
