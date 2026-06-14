@@ -1,4 +1,4 @@
-import { Play, RefreshCw, Square } from "lucide-react";
+import { Activity, CalendarDays, CarFront, Play, RefreshCw, Shield, Square } from "lucide-react";
 import { WebRtcPreview } from "../components/WebRtcPreview.jsx";
 import { LogTable } from "../components/Tables.jsx";
 
@@ -7,12 +7,19 @@ export function LogsPanel({
   selectedCamera,
   loadCameraLogs,
   rows,
+  cameraDashboard,
   deleteLog,
   running,
   startCamera,
   stopCamera,
 }) {
   const camera = cameras.find((item) => Number(item.id) === Number(selectedCamera));
+  const kpis = [
+    { label: "Today's Vehicles", value: cameraDashboard?.today_total || 0, icon: Activity, tone: "cyan" },
+    { label: "Military Vehicles", value: cameraDashboard?.today_mil || 0, icon: Shield, tone: "emerald" },
+    { label: "Civil Vehicles", value: cameraDashboard?.today_civil || 0, icon: CarFront, tone: "amber" },
+    { label: "Last 7 Days", value: cameraDashboard?.week_total || 0, icon: CalendarDays, tone: "violet" },
+  ];
 
   return (
     <section className="panel">
@@ -35,6 +42,18 @@ export function LogsPanel({
         <div className="camera-preview logs-preview">
           <WebRtcPreview camera={camera} running={Boolean(camera && running[camera.id])} />
         </div>
+      </div>
+      <div className="dashboard-summary-grid camera-log-summary-grid">
+        {kpis.map(({ label, value, icon: Icon, tone }) => (
+          <article className={`dashboard-summary-card ${tone}`} key={label}>
+            <div className="kpi-card-top">
+              <span>{label}</span>
+              <i><Icon size={18} /></i>
+            </div>
+            <strong>{Number(value).toLocaleString()}</strong>
+            <small>{camera?.name || `Camera ${selectedCamera}`}</small>
+          </article>
+        ))}
       </div>
       <LogTable rows={rows} onDelete={deleteLog} />
     </section>

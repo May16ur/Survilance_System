@@ -1619,6 +1619,10 @@ h1 {
   max-height: 360px;
 }
 
+.camera-log-summary-grid {
+  margin-bottom: 14px;
+}
+
 .empty-preview {
   height: 100%;
   color: #bac4cf;

@@ -29,6 +29,7 @@ function App() {
   const [running, setRunning] = useState({});
   const [uploadLogs, setUploadLogs] = useState([]);
   const [cameraLogs, setCameraLogs] = useState([]);
+  const [cameraLogDashboard, setCameraLogDashboard] = useState(null);
   const [selectedCamera, setSelectedCamera] = useState(1);
   const [notifications, setNotifications] = useState([]);
   const [blacklist, setBlacklist] = useState([]);
@@ -241,8 +242,12 @@ function App() {
 
   async function loadCameraLogs(cameraId = selectedCamera) {
     setSelectedCamera(cameraId);
-    const data = await getJson(`/api/camera_logs/${cameraId}?limit=300`);
+    const [data, dashboardData] = await Promise.all([
+      getJson(`/api/camera_logs/${cameraId}?limit=300`),
+      getJson(`/api/camera_dashboard/${cameraId}`),
+    ]);
     setCameraLogs(data.logs || []);
+    setCameraLogDashboard(dashboardData);
   }
 
   async function saveLogs() {
@@ -503,6 +508,7 @@ function App() {
             selectedCamera={selectedCamera}
             loadCameraLogs={loadCameraLogs}
             rows={cameraLogs}
+            cameraDashboard={cameraLogDashboard}
             deleteLog={deleteLog}
             running={running}
             startCamera={startCamera}
