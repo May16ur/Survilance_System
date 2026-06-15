@@ -53,29 +53,33 @@ function App() {
   const [remaining, setRemaining] = useState(null);
   const [vehicleMaster, setVehicleMaster] = useState([]);
   const uploadRef = useRef(null);
+  const dashboardRefreshRunning = useRef(false);
 
   useEffect(() => {
     loadAppConfig();
     refreshHealth();
     refreshCounters();
-    refreshBlacklist();
     loadDashboard();
-    loadVehicleMaster();
   }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
-      refreshCounters();
-      if (activeTab === "dashboard") loadDashboard(false);
+      if (activeTab === "dashboard") {
+        refreshCounters();
+        loadDashboard(false);
+      }
       if (activeTab === "alerts") refreshBlacklist();
       if (activeTab === "logs") loadCameraLogs(selectedCamera);
       if (activeTab === "upload" && uploadRunning) loadUploadLogs();
-    }, 5000);
+    }, 30000);
     return () => clearInterval(timer);
   }, [activeTab, selectedCamera, uploadRunning, cameras, dateRange]);
 
   useEffect(() => {
     if (activeTab === "reports") loadReport(null, reportFilters);
+    if (activeTab === "alerts") refreshBlacklist();
+    if (activeTab === "vehicles") loadVehicleMaster();
+    if (activeTab === "tcp") loadTcpReport(tcpName);
   }, [activeTab]);
 
   function dateParams(range = dateRange) {
@@ -115,14 +119,12 @@ function App() {
       if (pairs.length) {
         setTcpOptions(pairs);
         setTcpName(pairs[0].key);
-        loadTcpReport(pairs[0].key);
       }
       if (config.server?.public_url) {
         setBackendUrl(config.server.public_url);
       }
     } catch {
       loadCameras();
-      loadTcpReport("kiari");
     }
   }
 
@@ -145,44 +147,49 @@ function App() {
   }
 
   async function refreshCounters(range = dateRange) {
-    const next = {};
-    await Promise.all(
-      cameras.slice(0, 14).map(async (camera) => {
-        try {
-          const stats = await getJson(`/api/camera_dashboard/${camera.id}?${dateParams(range)}`);
-          next[camera.id] = {
-            ...stats,
-            today_total: Number(stats.total_mil || 0) + Number(stats.total_civil || 0),
-            today_mil: Number(stats.total_mil || 0),
-            today_civil: Number(stats.total_civil || 0),
-          };
-        } catch {
-          next[camera.id] = { today_total: 0, today_mil: 0, today_civil: 0 };
-        }
-      })
-    );
-    setCameraStats(next);
+    try {
+      const data = await getJson(`/api/camera_range_stats?${dateParams(range)}`);
+      setCameraStats(data.stats || {});
+    } catch {
+      setCameraStats({});
+    }
   }
 
   async function loadDashboard(showStatus = true, range = dateRange) {
+    if (dashboardRefreshRunning.current) return;
+    dashboardRefreshRunning.current = true;
     try {
       const params = dateParams(range);
-      const trendParams = dateParams(createDateRange(7));
-      const [full, trend, cmp, diag, sunday] = await Promise.all([
-        getJson(`/dashboard_full?${params}`),
-        getJson(`/dashboard_full?${trendParams}`),
+      const fixedTrendRange = createDateRange(7);
+      const trendParams = dateParams(fixedTrendRange);
+      const sameAsFixedTrend = range.start_date === fixedTrendRange.start_date
+        && range.end_date === fixedTrendRange.end_date;
+      const full = await getJson(`/dashboard_full?${params}`);
+      setDashboard(full);
+      dashboardRefreshRunning.current = false;
+      if (sameAsFixedTrend) {
+        setDashboardTrend(full);
+      } else {
+        getJson(`/dashboard_full?${trendParams}`)
+          .then(setDashboardTrend)
+          .catch(() => {});
+      }
+      if (showStatus) setStatus("Dashboard totals loaded.");
+      if (!showStatus) return;
+
+      const [cmp, diag, sunday] = await Promise.all([
         getJson(`/api/camera_comparison?${params}`),
         getJson(`/api/count_diagnostic?date=${encodeURIComponent(range.end_date)}`),
         getJson(`/api/sunday_military_report?limit=500&date=${encodeURIComponent(range.end_date)}`),
       ]);
-      setDashboard(full);
-      setDashboardTrend(trend);
       setComparison(cmp);
       setDiagnostic(diag);
       setSundayMilitary(sunday);
       if (showStatus) setStatus("Dashboard refreshed.");
     } catch (e) {
       if (showStatus) setStatus(`Dashboard refresh failed: ${e.message}`);
+    } finally {
+      dashboardRefreshRunning.current = false;
     }
   }
 

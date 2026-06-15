@@ -1549,6 +1549,58 @@ def _count_class_totals(cur, camera_name, start_date, end_date):
     return int(row.get('mil_count') or 0), int(row.get('civil_count') or 0), int(row.get('total_count') or 0)
 
 
+def get_all_camera_range_stats(start_date=None, end_date=None):
+    try:
+        end_date = end_date or datetime.date.today().strftime("%Y-%m-%d")
+        start_date = start_date or end_date
+        conn = _get_connection()
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            """
+            SELECT
+                camera_id,
+                SUM(CASE WHEN class_id=0 OR LOWER(COALESCE(class_name,'')) LIKE '%mil%' THEN 1 ELSE 0 END) AS mil_count,
+                SUM(CASE WHEN class_id=1 OR LOWER(COALESCE(class_name,'')) LIKE '%civil%' THEN 1 ELSE 0 END) AS civil_count
+            FROM vehicle_logs
+            WHERE detection_date BETWEEN %s AND %s
+              AND camera_id IS NOT NULL
+            GROUP BY camera_id
+            """,
+            (start_date, end_date),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        stats = {
+            camera_id: {"today_total": 0, "today_mil": 0, "today_civil": 0}
+            for camera_id in CAMERA_NAME_MAP
+        }
+        for row in rows:
+            camera_id = int(row.get("camera_id") or 0)
+            if camera_id not in stats:
+                continue
+            mil = int(row.get("mil_count") or 0)
+            civil = int(row.get("civil_count") or 0)
+            stats[camera_id] = {
+                "today_total": mil + civil,
+                "today_mil": mil,
+                "today_civil": civil,
+            }
+        return {"success": True, "start_date": start_date, "end_date": end_date, "stats": stats}
+    except Exception as e:
+        print("All camera range stats error:", e)
+        return {
+            "success": False,
+            "start_date": start_date,
+            "end_date": end_date,
+            "stats": {
+                camera_id: {"today_total": 0, "today_mil": 0, "today_civil": 0}
+                for camera_id in CAMERA_NAME_MAP
+            },
+            "message": str(e),
+        }
+
+
 def fetch_recent_logs(camera_name=None, camera_id=None, limit=200, start_date=None, end_date=None, raise_on_error=False):
     try:
         conn=_get_connection()
@@ -1645,10 +1697,10 @@ def get_dashboard_stats(camera_name=None, days=7, start_date=None, end_date=None
         today=datetime.date.today(); end = datetime.datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else today
         start = datetime.datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else end - datetime.timedelta(days=days-1)
         conn=_get_connection(); cur=conn.cursor(dictionary=True)
-        date_expr = "COALESCE(detection_date, log_date, DATE(detection_time), DATE(time))"
+        date_expr = "detection_date"
         where=[f"{date_expr} BETWEEN %s AND %s"]; params=[start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")]
         if camera_name:
-            aliases=[str(a).strip().lower() for a in get_camera_aliases(camera_name)]; where.append("LOWER(TRIM(camera_name)) IN ("+",".join(["%s"]*len(aliases))+")"); params.extend(aliases)
+            aliases=[str(a).strip() for a in get_camera_aliases(camera_name)]; where.append("camera_name IN ("+",".join(["%s"]*len(aliases))+")"); params.extend(aliases)
         where_sql="WHERE "+" AND ".join(where)
         cur.execute(f"""
             SELECT {date_expr} as detection_date,
@@ -1682,26 +1734,13 @@ def get_dashboard_stats(camera_name=None, days=7, start_date=None, end_date=None
             civil_overspeed.append(int(r.get('civil_overspeed_count') or 0))
             d+=datetime.timedelta(days=1)
 
-        week_start = max(start, end - datetime.timedelta(days=6))
-        month_start = max(start, end.replace(day=1))
-        year_start = max(start, end.replace(month=1, day=1))
-
-        week_mil, week_civil, _ = _count_class_totals(cur, camera_name, week_start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
-        month_mil, month_civil, _ = _count_class_totals(cur, camera_name, month_start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
-        year_mil, year_civil, _ = _count_class_totals(cur, camera_name, year_start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
-
-        today_key=today.strftime("%Y-%m-%d")
-        if camera_name:
-            aliases = [str(a).strip().lower() for a in get_camera_aliases(camera_name)]
-            cur.execute(f"SELECT COUNT(*) c, SUM(CASE WHEN class_id=0 OR LOWER(COALESCE(class_name,'')) LIKE '%mil%' THEN 1 ELSE 0 END) m, SUM(CASE WHEN class_id=1 OR LOWER(COALESCE(class_name,'')) LIKE '%civil%' THEN 1 ELSE 0 END) cv FROM vehicle_logs WHERE LOWER(TRIM(camera_name)) IN ("+",".join(['%s']*len(aliases))+f") AND {date_expr}=%s", tuple(aliases+[today_key]))
-        else:
-            cur.execute(f"SELECT COUNT(*) c, SUM(CASE WHEN class_id=0 OR LOWER(COALESCE(class_name,'')) LIKE '%mil%' THEN 1 ELSE 0 END) m, SUM(CASE WHEN class_id=1 OR LOWER(COALESCE(class_name,'')) LIKE '%civil%' THEN 1 ELSE 0 END) cv FROM vehicle_logs WHERE {date_expr}=%s", (today_key,))
-        tr=cur.fetchone() or {}
-        logs=fetch_recent_logs(camera_name=camera_name, limit=10)
         cur.close(); conn.close()
-        today_mil = int(tr.get('m') or 0)
-        today_civil = int(tr.get('cv') or 0)
-        return {"dates":dates,"mil":mil,"civil":civil,"total":total,"today_total":today_mil+today_civil,"today_mil":today_mil,"today_civil":today_civil,"week_total":sum(mil)+sum(civil),"week_mil":sum(mil),"week_civil":sum(civil),"total_mil":sum(mil),"total_civil":sum(civil),"mil_overspeed":sum(mil_overspeed),"mil_within_limit":max(sum(mil)-sum(mil_overspeed),0),"civil_overspeed":sum(civil_overspeed),"civil_within_limit":max(sum(civil)-sum(civil_overspeed),0),"week_pie":[week_mil,week_civil],"month_pie":[month_mil,month_civil],"year_pie":[year_mil,year_civil],"logs":logs,"report_rows":[],"report_total":0,"report_range":{"from":start.strftime('%Y-%m-%d'),"to":end.strftime('%Y-%m-%d')}}
+        total_mil = sum(mil)
+        total_civil = sum(civil)
+        final_day_mil = mil[-1] if mil else 0
+        final_day_civil = civil[-1] if civil else 0
+        selected_pie = [total_mil, total_civil]
+        return {"dates":dates,"mil":mil,"civil":civil,"total":total,"today_total":final_day_mil+final_day_civil,"today_mil":final_day_mil,"today_civil":final_day_civil,"week_total":total_mil+total_civil,"week_mil":total_mil,"week_civil":total_civil,"total_mil":total_mil,"total_civil":total_civil,"mil_overspeed":sum(mil_overspeed),"mil_within_limit":max(total_mil-sum(mil_overspeed),0),"civil_overspeed":sum(civil_overspeed),"civil_within_limit":max(total_civil-sum(civil_overspeed),0),"week_pie":selected_pie,"month_pie":selected_pie,"year_pie":selected_pie,"logs":[],"report_rows":[],"report_total":0,"report_range":{"from":start.strftime('%Y-%m-%d'),"to":end.strftime('%Y-%m-%d')}}
     except Exception as e:
         print("Dashboard stats error:", e); return {"dates":[],"mil":[],"civil":[],"total":[],"today_total":0,"today_mil":0,"today_civil":0,"week_total":0,"week_mil":0,"week_civil":0,"logs":[],"report_rows":[]}
 

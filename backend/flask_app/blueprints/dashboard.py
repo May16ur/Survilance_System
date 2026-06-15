@@ -8,6 +8,7 @@ from core.common import (
     get_camera_comparison_stats,
     get_remaining_vehicle_rows,
     get_camera_today_db_stats,
+    get_all_camera_range_stats,
     get_camera_sum_vs_dashboard,
     get_sunday_military_report,
     TCP_PAIR_MAP,
@@ -75,12 +76,24 @@ def api_camera_today_stats(camera_id):
     )
     return jsonify(cache_set(cache_key, data))
 
+
+@bp.route("/api/camera_range_stats")
+def api_camera_range_stats():
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    cache_key = f"camera_range_stats:{start_date or ''}:{end_date or ''}"
+    cached = cache_get(cache_key, 20)
+    if cached is not None:
+        return jsonify(cached)
+    return jsonify(cache_set(cache_key, get_all_camera_range_stats(start_date=start_date, end_date=end_date)))
+
+
 @bp.route("/api/camera_comparison")
 def api_camera_comparison():
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
     cache_key = f"camera_comparison:{start_date or ''}:{end_date or ''}"
-    cached = cache_get(cache_key, 5)
+    cached = cache_get(cache_key, 30)
     if cached is not None:
         return jsonify(cached)
     return jsonify(cache_set(cache_key, get_camera_comparison_stats(start_date=start_date, end_date=end_date)))
@@ -91,7 +104,7 @@ def api_count_diagnostic():
     """Diagnostic endpoint to compare dashboard total vs. sum of all cameras."""
     date_value = request.args.get("date")
     cache_key = f"count_diagnostic:{date_value or 'today'}"
-    cached = cache_get(cache_key, 5)
+    cached = cache_get(cache_key, 30)
     if cached is not None:
         return jsonify(cached)
     data = get_camera_sum_vs_dashboard(date_value=date_value)
