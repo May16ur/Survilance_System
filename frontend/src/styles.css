@@ -1773,6 +1773,55 @@ th {
   align-items: center;
 }
 
+.report-message {
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 13px;
+}
+
+.report-message.error {
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: #b91c1c;
+}
+
+.tcp-camera-speed-section {
+  display: grid;
+  gap: 10px;
+}
+
+.tcp-camera-speed-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tcp-camera-speed-heading span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.tcp-camera-speed-heading h2 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 17px;
+}
+
+.spin {
+  animation: report-spin 0.9s linear infinite;
+}
+
+@keyframes report-spin {
+  to { transform: rotate(360deg); }
+}
+
 .vehicle-form {
   display: grid;
   grid-template-columns: repeat(3, minmax(160px, 1fr)) auto auto;

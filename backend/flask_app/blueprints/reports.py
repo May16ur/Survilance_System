@@ -24,13 +24,18 @@ def api_last_7_days_report():
     if cached is not None:
         return jsonify(cached)
 
-    rows = get_last_7_days_report_rows(
-        camera_name=camera_name,
-        vehicle_type=vehicle_type,
-        start_date=start_date,
-        end_date=end_date,
-        limit=limit,
-    )
+    try:
+        rows = get_last_7_days_report_rows(
+            camera_name=camera_name,
+            camera_id=camera_id,
+            vehicle_type=vehicle_type,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            raise_on_error=True,
+        )
+    except RuntimeError as e:
+        return jsonify({"success": False, "message": str(e), "rows": [], "total": 0}), 503
 
     return jsonify(cache_set(cache_key, {
         "vehicle_type": vehicle_type,
@@ -231,13 +236,18 @@ def download_last_7_days_report():
         datetime.datetime.strptime(end_date, "%Y-%m-%d").date() - datetime.timedelta(days=6)
     ).strftime("%Y-%m-%d")
 
-    rows = get_last_7_days_report_rows(
-        camera_name=None if camera_name == "All Cameras" else camera_name,
-        vehicle_type=vehicle_type,
-        start_date=start_date,
-        end_date=end_date,
-        limit=int(request.args.get("limit", 2000)),
-    )
+    try:
+        rows = get_last_7_days_report_rows(
+            camera_name=None if camera_name == "All Cameras" else camera_name,
+            camera_id=camera_id,
+            vehicle_type=vehicle_type,
+            start_date=start_date,
+            end_date=end_date,
+            limit=int(request.args.get("limit", 2000)),
+            raise_on_error=True,
+        )
+    except RuntimeError as e:
+        return jsonify({"success": False, "message": str(e)}), 503
 
     try:
         pdf_buffer = _build_report_pdf(rows, vehicle_type, camera_name, start_date, end_date)

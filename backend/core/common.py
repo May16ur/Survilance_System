@@ -1549,7 +1549,7 @@ def _count_class_totals(cur, camera_name, start_date, end_date):
     return int(row.get('mil_count') or 0), int(row.get('civil_count') or 0), int(row.get('total_count') or 0)
 
 
-def fetch_recent_logs(camera_name=None, camera_id=None, limit=200, start_date=None, end_date=None):
+def fetch_recent_logs(camera_name=None, camera_id=None, limit=200, start_date=None, end_date=None, raise_on_error=False):
     try:
         conn=_get_connection()
         cur=conn.cursor(dictionary=True)
@@ -1592,12 +1592,21 @@ def fetch_recent_logs(camera_name=None, camera_id=None, limit=200, start_date=No
         return rows
     except Error as e:
         print("Fetch recent logs error:", e)
+        if raise_on_error:
+            raise RuntimeError(f"MySQL report query failed: {e}") from e
         return []
 
-def get_last_7_days_report_rows(camera_name=None, vehicle_type="all", start_date=None, end_date=None, limit=2000):
+def get_last_7_days_report_rows(camera_name=None, camera_id=None, vehicle_type="all", start_date=None, end_date=None, limit=2000, raise_on_error=False):
     if not end_date: end_date=datetime.date.today().strftime("%Y-%m-%d")
     if not start_date: start_date=(datetime.date.today()-datetime.timedelta(days=6)).strftime("%Y-%m-%d")
-    rows=fetch_recent_logs(camera_name=camera_name, limit=limit, start_date=start_date, end_date=end_date)
+    rows=fetch_recent_logs(
+        camera_name=None if camera_id is not None else camera_name,
+        camera_id=camera_id,
+        limit=limit,
+        start_date=start_date,
+        end_date=end_date,
+        raise_on_error=raise_on_error,
+    )
     vehicle_type=(vehicle_type or "all").lower()
     if vehicle_type=="mil": rows=[r for r in rows if str(r.get("class_id"))=="0" or "mil" in str(r.get("class_name","")).lower()]
     elif vehicle_type=="civil": rows=[r for r in rows if str(r.get("class_id"))=="1" or "civil" in str(r.get("class_name","")).lower()]

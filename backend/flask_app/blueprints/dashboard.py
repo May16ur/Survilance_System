@@ -122,6 +122,23 @@ def api_tcp_dashboard(tcp_name):
         return jsonify({"success": False, "message": "Dates must use YYYY-MM-DD"}), 400
     if start > end:
         start, end = end, start
+    camera_names = TCP_PAIR_MAP[key]
+    camera_breakdown = []
+    for camera_name in camera_names:
+        camera_stats = get_dashboard_stats(
+            camera_name=camera_name,
+            start_date=start.strftime("%Y-%m-%d"),
+            end_date=end.strftime("%Y-%m-%d"),
+        )
+        camera_breakdown.append({
+            "camera_name": camera_name,
+            "mil": int(camera_stats.get("total_mil") or 0),
+            "civil": int(camera_stats.get("total_civil") or 0),
+            "mil_overspeed": int(camera_stats.get("mil_overspeed") or 0),
+            "mil_within_limit": int(camera_stats.get("mil_within_limit") or 0),
+            "civil_overspeed": int(camera_stats.get("civil_overspeed") or 0),
+            "civil_within_limit": int(camera_stats.get("civil_within_limit") or 0),
+        })
     dates = []
     current = start
     while current <= end:
@@ -149,6 +166,7 @@ def api_tcp_dashboard(tcp_name):
         "total_mil": sum(mil),
         "total_civil": sum(civil),
         "week_total": sum(mil) + sum(civil),
+        "camera_breakdown": camera_breakdown,
     })
 
 

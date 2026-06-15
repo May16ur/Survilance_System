@@ -38,10 +38,13 @@ function App() {
   const [searchResults, setSearchResults] = useState([]);
   const [uploadRunning, setUploadRunning] = useState(false);
   const [dashboard, setDashboard] = useState(null);
+  const [dashboardTrend, setDashboardTrend] = useState(null);
   const [comparison, setComparison] = useState(null);
   const [diagnostic, setDiagnostic] = useState(null);
   const [sundayMilitary, setSundayMilitary] = useState(null);
   const [reportRows, setReportRows] = useState([]);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState("");
   const [dateRange, setDateRange] = useState(initialDateRange);
   const [reportFilters, setReportFilters] = useState({ vehicle_type: "all", camera_id: "", ...initialDateRange });
   const [tcpName, setTcpName] = useState("kiari");
@@ -70,6 +73,10 @@ function App() {
     }, 5000);
     return () => clearInterval(timer);
   }, [activeTab, selectedCamera, uploadRunning, cameras, dateRange]);
+
+  useEffect(() => {
+    if (activeTab === "reports") loadReport(null, reportFilters);
+  }, [activeTab]);
 
   function dateParams(range = dateRange) {
     return new URLSearchParams(range).toString();
@@ -160,13 +167,16 @@ function App() {
   async function loadDashboard(showStatus = true, range = dateRange) {
     try {
       const params = dateParams(range);
-      const [full, cmp, diag, sunday] = await Promise.all([
+      const trendParams = dateParams(createDateRange(7));
+      const [full, trend, cmp, diag, sunday] = await Promise.all([
         getJson(`/dashboard_full?${params}`),
+        getJson(`/dashboard_full?${trendParams}`),
         getJson(`/api/camera_comparison?${params}`),
         getJson(`/api/count_diagnostic?date=${encodeURIComponent(range.end_date)}`),
         getJson(`/api/sunday_military_report?limit=500&date=${encodeURIComponent(range.end_date)}`),
       ]);
       setDashboard(full);
+      setDashboardTrend(trend);
       setComparison(cmp);
       setDiagnostic(diag);
       setSundayMilitary(sunday);
@@ -313,14 +323,24 @@ function App() {
 
   async function loadReport(event, filtersOverride = reportFilters) {
     event?.preventDefault();
-    const params = new URLSearchParams();
-    Object.entries(filtersOverride).forEach(([key, value]) => {
-      if (value) params.set(key, value);
-    });
-    params.set("limit", "2000");
-    const data = await getJson(`/api/last_7_days_report?${params}`);
-    setReportRows(data.rows || []);
-    setStatus(`Loaded ${data.total || 0} report rows.`);
+    setReportLoading(true);
+    setReportError("");
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filtersOverride).forEach(([key, value]) => {
+        if (value) params.set(key, value);
+      });
+      params.set("limit", "2000");
+      const data = await getJson(`/api/last_7_days_report?${params}`);
+      setReportRows(data.rows || []);
+      setStatus(`Loaded ${data.total || 0} report rows.`);
+    } catch (error) {
+      setReportRows([]);
+      setReportError(`Report could not load: ${error.message}. Check that the backend and MySQL are online.`);
+      setStatus(`Report load failed: ${error.message}`);
+    } finally {
+      setReportLoading(false);
+    }
   }
 
   function downloadReport() {
@@ -464,6 +484,7 @@ function App() {
         {activeTab === "dashboard" && (
           <DashboardPanel
             dashboard={dashboard}
+            dashboardTrend={dashboardTrend}
             comparison={comparison}
             diagnostic={diagnostic}
             sundayMilitary={sundayMilitary}
@@ -539,6 +560,8 @@ function App() {
             filters={reportFilters}
             setFilters={setReportFilters}
             rows={reportRows}
+            loading={reportLoading}
+            error={reportError}
             loadReport={loadReport}
             downloadReport={downloadReport}
           />

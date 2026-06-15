@@ -50,8 +50,10 @@ def _ensure_loop():
         return _loop
 
 
-class PreviewVideoTrack(VideoStreamTrack):
+class PreviewVideoTrack(VideoStreamTrack if VideoStreamTrack is not None else object):
     def __init__(self, camera_id):
+        if VideoStreamTrack is None:
+            raise RuntimeError(f"WebRTC unavailable: {WEBRTC_IMPORT_ERROR}")
         super().__init__()
         self.camera_id = camera_id
         self.frame_no = 0

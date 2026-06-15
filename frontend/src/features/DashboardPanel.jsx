@@ -142,7 +142,7 @@ function SundayMilitaryReport({ report }) {
   );
 }
 
-export function DashboardPanel({ dashboard, comparison, diagnostic, sundayMilitary, cameras, cameraStats, dateRange, applyDateRange, status, refresh, openCameraLogs }) {
+export function DashboardPanel({ dashboard, dashboardTrend, comparison, diagnostic, sundayMilitary, cameras, cameraStats, dateRange, applyDateRange, status, refresh, openCameraLogs }) {
   const [cameraSearch, setCameraSearch] = useState("");
   const comparisonPairs = comparison?.pairs || {};
   const pairs = DEFAULT_TCP_REPORTS.map((fallback) => {
@@ -247,16 +247,16 @@ export function DashboardPanel({ dashboard, comparison, diagnostic, sundayMilita
 
       <div className="dashboard-chart-grid">
         <BarChart
-          title={`Military Vehicles (${periodLabel})`}
-          labels={dashboard?.dates || []}
-          values={dashboard?.mil || []}
+          title="Military Vehicles (Last 7 Days)"
+          labels={dashboardTrend?.dates || []}
+          values={dashboardTrend?.mil || []}
           color={CHART_COLORS.military}
           seriesLabel="Military Vehicles"
         />
         <BarChart
-          title={`Civil Vehicles (${periodLabel})`}
-          labels={dashboard?.dates || []}
-          values={dashboard?.civil || []}
+          title="Civil Vehicles (Last 7 Days)"
+          labels={dashboardTrend?.dates || []}
+          values={dashboardTrend?.civil || []}
           color={CHART_COLORS.civil}
           seriesLabel="Civil Vehicles"
         />

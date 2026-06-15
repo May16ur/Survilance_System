@@ -1,6 +1,6 @@
 import { Activity, CalendarDays, CarFront, RefreshCw, Shield } from "lucide-react";
 import { SimpleTable, TcpTable } from "../components/Tables.jsx";
-import { BarChart, CHART_COLORS } from "../components/Charts.jsx";
+import { BarChart, CHART_COLORS, SpeedPieChart } from "../components/Charts.jsx";
 import { dateRangeDays, formatDateRange } from "../components/DateRangeSelector.jsx";
 
 export function TcpPanel({ tcpName, tcpOptions, tcpReport, tcpDashboard, remaining, dateRange, loadTcpReport }) {
@@ -52,6 +52,28 @@ export function TcpPanel({ tcpName, tcpOptions, tcpReport, tcpDashboard, remaini
           seriesLabel="Civil Vehicles"
         />
       </div>
+      {(tcpDashboard?.camera_breakdown || []).map((camera) => (
+        <div className="tcp-camera-speed-section" key={camera.camera_name}>
+          <div className="tcp-camera-speed-heading">
+            <span>Individual Camera Speed Status</span>
+            <h2>{camera.camera_name}</h2>
+          </div>
+          <div className="dashboard-chart-grid tcp-camera-pie-charts">
+            <SpeedPieChart
+              title={`Military Speed Status (${periodLabel})`}
+              overspeed={camera.mil_overspeed}
+              withinLimit={camera.mil_within_limit}
+              accent="#f97316"
+            />
+            <SpeedPieChart
+              title={`Civil Speed Status (${periodLabel})`}
+              overspeed={camera.civil_overspeed}
+              withinLimit={camera.civil_within_limit}
+              accent="#ef4444"
+            />
+          </div>
+        </div>
+      ))}
       <TcpTable rows={tcpReport?.rows || []} />
       <SimpleTable
         title="Remaining Vehicles"
