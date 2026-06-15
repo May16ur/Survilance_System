@@ -1601,7 +1601,7 @@ def get_all_camera_range_stats(start_date=None, end_date=None):
         }
 
 
-def fetch_recent_logs(camera_name=None, camera_id=None, limit=200, start_date=None, end_date=None, raise_on_error=False):
+def fetch_recent_logs(camera_name=None, camera_id=None, limit=200, start_date=None, end_date=None, raise_on_error=False, vehicle_type=None):
     try:
         conn=_get_connection()
         cur=conn.cursor(dictionary=True)
@@ -1615,6 +1615,13 @@ def fetch_recent_logs(camera_name=None, camera_id=None, limit=200, start_date=No
             params.extend(aliases)
         dwhere,dparams=_date_where(start_date,end_date)
         where += dwhere; params += dparams
+        vehicle_type = str(vehicle_type or "").strip().lower()
+        if vehicle_type == "mil":
+            where.append("(class_id = 0 OR LOWER(COALESCE(class_name,'')) LIKE '%mil%')")
+        elif vehicle_type == "civil":
+            where.append("(class_id = 1 OR LOWER(COALESCE(class_name,'')) LIKE '%civil%')")
+        elif vehicle_type == "all":
+            where.append("((class_id = 0 OR LOWER(COALESCE(class_name,'')) LIKE '%mil%') OR (class_id = 1 OR LOWER(COALESCE(class_name,'')) LIKE '%civil%'))")
         where_sql = "WHERE " + " AND ".join(where) if where else ""
         cur.execute(f"""
             SELECT
@@ -1658,10 +1665,8 @@ def get_last_7_days_report_rows(camera_name=None, camera_id=None, vehicle_type="
         start_date=start_date,
         end_date=end_date,
         raise_on_error=raise_on_error,
+        vehicle_type=vehicle_type,
     )
-    vehicle_type=(vehicle_type or "all").lower()
-    if vehicle_type=="mil": rows=[r for r in rows if str(r.get("class_id"))=="0" or "mil" in str(r.get("class_name","")).lower()]
-    elif vehicle_type=="civil": rows=[r for r in rows if str(r.get("class_id"))=="1" or "civil" in str(r.get("class_name","")).lower()]
     return rows
 
 

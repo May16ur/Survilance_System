@@ -6,7 +6,7 @@ from urllib.request import urlopen
 
 from flask import Blueprint, jsonify, request, send_file
 
-from core.common import CAMERA_NAME_MAP, display_unit_for_class, get_last_7_days_report_rows
+from core.common import CAMERA_NAME_MAP, class_bucket, display_unit_for_class, get_last_7_days_report_rows, speed_number
 from flask_app.blueprints.route_utils import cache_get, cache_set
 
 bp = Blueprint("reports", __name__)
@@ -37,17 +37,44 @@ def api_last_7_days_report():
     except RuntimeError as e:
         return jsonify({"success": False, "message": str(e), "rows": [], "total": 0}), 503
 
+    summary = _report_summary(rows)
     return jsonify(cache_set(cache_key, {
         "vehicle_type": vehicle_type,
         "camera_name": camera_name or "All Cameras",
         "start_date": start_date,
         "end_date": end_date,
-        "total": len(rows),
+        "total": summary["total"],
+        "summary": summary,
+        "counts_consistent": summary["military"] + summary["civil"] == summary["total"],
         "rows": rows,
     }))
 
 
 STATIC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static"))
+
+
+def _report_summary(rows):
+    summary = {
+        "total": 0,
+        "military": 0,
+        "civil": 0,
+        "military_overspeed": 0,
+        "civil_overspeed": 0,
+    }
+    for row in rows:
+        bucket = class_bucket(row.get("class_name"), row.get("class_id"))
+        if bucket == "mil":
+            summary["military"] += 1
+            if speed_number(row.get("avg_speed") or row.get("speed")) > 40:
+                summary["military_overspeed"] += 1
+        elif bucket == "civil":
+            summary["civil"] += 1
+            if speed_number(row.get("avg_speed") or row.get("speed")) > 40:
+                summary["civil_overspeed"] += 1
+    summary["total"] = summary["military"] + summary["civil"]
+    summary["military_within_limit"] = summary["military"] - summary["military_overspeed"]
+    summary["civil_within_limit"] = summary["civil"] - summary["civil_overspeed"]
+    return summary
 
 
 def _pdf_text(value, paragraph_style, Paragraph):
@@ -114,6 +141,7 @@ def _build_report_pdf(rows, vehicle_type, camera_name, start_date, end_date):
     range_text = start_date if start_date == end_date else f"{start_date} to {end_date}"
     vehicle_label = {"mil": "Mil", "civil": "Civil", "all": "All"}.get(vehicle_type, vehicle_type.title())
     title_text = f"Vehicle Logs - {vehicle_label} - {camera_name}"
+    summary = _report_summary(rows)
     title_style = ParagraphStyle(
         "ReportTitle",
         parent=styles["Title"],
@@ -141,7 +169,14 @@ def _build_report_pdf(rows, vehicle_type, camera_name, start_date, end_date):
 
     story.append(Paragraph(title_text, title_style))
     story.append(Spacer(1, 0.08 * inch))
-    story.append(Paragraph(f"{range_text} | Total records: {len(rows)}", meta_style))
+    story.append(Paragraph(
+        (
+            f"{range_text} | Total: {summary['total']} | Military: {summary['military']} | Civil: {summary['civil']}<br/>"
+            f"Military speed: {summary['military_overspeed']} over / {summary['military_within_limit']} within | "
+            f"Civil speed: {summary['civil_overspeed']} over / {summary['civil_within_limit']} within"
+        ),
+        meta_style,
+    ))
     story.append(Spacer(1, 0.35 * inch))
 
     table_data = [[
