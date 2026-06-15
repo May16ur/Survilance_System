@@ -157,6 +157,14 @@ nav button:hover {
   margin-bottom: 16px;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .eyebrow {
   margin: 0 0 3px;
   text-transform: uppercase;
@@ -240,6 +248,60 @@ h1 {
 .button-row button {
   width: auto;
   padding: 0 12px;
+}
+
+.date-range-selector {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid #cfd7e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #526171;
+}
+
+.date-range-selector select,
+.date-range-selector input {
+  width: auto;
+  min-width: 125px;
+  min-height: 30px;
+  padding: 4px 7px;
+  border: 0;
+  background: transparent;
+}
+
+.date-range-selector input {
+  min-width: 132px;
+}
+
+.date-range-selector span {
+  font-size: 12px;
+  color: #748191;
+}
+
+.date-range-selector button {
+  width: auto;
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.date-range-selector.dark {
+  border-color: rgba(125, 211, 252, 0.16);
+  background: rgba(3, 13, 24, 0.55);
+  color: #5ee3ee;
+}
+
+.date-range-selector.dark select,
+.date-range-selector.dark input {
+  color: #edf8fb;
+  color-scheme: dark;
+}
+
+.date-range-selector.dark option {
+  color: #edf8fb;
+  background: #102233;
 }
 
 .camera-grid {
@@ -1706,7 +1768,7 @@ th {
 
 .filter-bar {
   display: grid;
-  grid-template-columns: 160px minmax(220px, 1fr) 150px 150px auto auto;
+  grid-template-columns: 160px minmax(220px, 1fr) auto auto;
   gap: 8px;
   align-items: center;
 }
@@ -1835,6 +1897,11 @@ code {
   .topbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .topbar-actions {
+    align-items: stretch;
+    justify-content: flex-start;
   }
 
   .inline-form {

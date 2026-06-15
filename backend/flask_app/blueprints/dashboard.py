@@ -77,10 +77,13 @@ def api_camera_today_stats(camera_id):
 
 @bp.route("/api/camera_comparison")
 def api_camera_comparison():
-    cached = cache_get("camera_comparison", 5)
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    cache_key = f"camera_comparison:{start_date or ''}:{end_date or ''}"
+    cached = cache_get(cache_key, 5)
     if cached is not None:
         return jsonify(cached)
-    return jsonify(cache_set("camera_comparison", get_camera_comparison_stats()))
+    return jsonify(cache_set(cache_key, get_camera_comparison_stats(start_date=start_date, end_date=end_date)))
 
 
 @bp.route("/api/count_diagnostic")
@@ -98,7 +101,11 @@ def api_count_diagnostic():
 @bp.route("/api/remaining_vehicles")
 def api_remaining_vehicles():
     group = request.args.get("group", "kiari")
-    return jsonify(get_remaining_vehicle_rows(group=group))
+    return jsonify(get_remaining_vehicle_rows(
+        group=group,
+        start_date=request.args.get("start_date"),
+        end_date=request.args.get("end_date"),
+    ))
 
 
 @bp.route("/api/tcp_dashboard/<tcp_name>")
@@ -108,7 +115,18 @@ def api_tcp_dashboard(tcp_name):
         return jsonify({"success": False, "message": "Invalid TCP name"}), 400
 
     today = datetime.date.today()
-    dates = [today - datetime.timedelta(days=offset) for offset in range(6, -1, -1)]
+    try:
+        end = datetime.datetime.strptime(request.args.get("end_date"), "%Y-%m-%d").date() if request.args.get("end_date") else today
+        start = datetime.datetime.strptime(request.args.get("start_date"), "%Y-%m-%d").date() if request.args.get("start_date") else end - datetime.timedelta(days=6)
+    except ValueError:
+        return jsonify({"success": False, "message": "Dates must use YYYY-MM-DD"}), 400
+    if start > end:
+        start, end = end, start
+    dates = []
+    current = start
+    while current <= end:
+        dates.append(current)
+        current += datetime.timedelta(days=1)
     mil = []
     civil = []
     for report_date in dates:
@@ -124,8 +142,12 @@ def api_tcp_dashboard(tcp_name):
         "dates": [report_date.strftime("%d-%m") for report_date in dates],
         "mil": mil,
         "civil": civil,
+        "start_date": start.strftime("%Y-%m-%d"),
+        "end_date": end.strftime("%Y-%m-%d"),
         "today_mil": mil[-1] if mil else 0,
         "today_civil": civil[-1] if civil else 0,
+        "total_mil": sum(mil),
+        "total_civil": sum(civil),
         "week_total": sum(mil) + sum(civil),
     })
 

@@ -1,6 +1,7 @@
 import { Activity, CalendarDays, CarFront, Play, RefreshCw, Shield, Square } from "lucide-react";
 import { WebRtcPreview } from "../components/WebRtcPreview.jsx";
 import { LogTable } from "../components/Tables.jsx";
+import { formatDateRange } from "../components/DateRangeSelector.jsx";
 
 export function LogsPanel({
   cameras,
@@ -8,17 +9,20 @@ export function LogsPanel({
   loadCameraLogs,
   rows,
   cameraDashboard,
+  dateRange,
   deleteLog,
   running,
   startCamera,
   stopCamera,
 }) {
   const camera = cameras.find((item) => Number(item.id) === Number(selectedCamera));
+  const selectedMil = Number(cameraDashboard?.total_mil || 0);
+  const selectedCivil = Number(cameraDashboard?.total_civil || 0);
   const kpis = [
-    { label: "Today's Vehicles", value: Number(cameraDashboard?.today_mil || 0) + Number(cameraDashboard?.today_civil || 0), icon: Activity, tone: "cyan" },
-    { label: "Military Vehicles", value: cameraDashboard?.today_mil || 0, icon: Shield, tone: "emerald" },
-    { label: "Civil Vehicles", value: cameraDashboard?.today_civil || 0, icon: CarFront, tone: "amber" },
-    { label: "Last 7 Days", value: Number(cameraDashboard?.week_mil || 0) + Number(cameraDashboard?.week_civil || 0), icon: CalendarDays, tone: "violet" },
+    { label: "Selected Vehicles", value: selectedMil + selectedCivil, icon: Activity, tone: "cyan" },
+    { label: "Military Vehicles", value: selectedMil, icon: Shield, tone: "emerald" },
+    { label: "Civil Vehicles", value: selectedCivil, icon: CarFront, tone: "amber" },
+    { label: "Date Range", value: rows?.length || 0, icon: CalendarDays, tone: "violet" },
   ];
 
   return (
@@ -51,7 +55,7 @@ export function LogsPanel({
               <i><Icon size={18} /></i>
             </div>
             <strong>{Number(value).toLocaleString()}</strong>
-            <small>{camera?.name || `Camera ${selectedCamera}`}</small>
+            <small>{label === "Date Range" ? `${formatDateRange(dateRange)} logs shown` : camera?.name || `Camera ${selectedCamera}`}</small>
           </article>
         ))}
       </div>

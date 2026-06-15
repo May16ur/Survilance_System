@@ -4,6 +4,7 @@ import { Activity } from "lucide-react";
 import { getJson } from "./lib/api.js";
 import { DEFAULT_CAMERAS, TCP_OPTIONS, TABS } from "./lib/constants.js";
 import { Metric } from "./components/Metric.jsx";
+import { createDateRange, DateRangeSelector } from "./components/DateRangeSelector.jsx";
 import { DashboardPanel } from "./features/DashboardPanel.jsx";
 import { StreamsPanel } from "./features/StreamsPanel.jsx";
 import { UploadPanel } from "./features/UploadPanel.jsx";
@@ -19,6 +20,7 @@ import "./styles.css";
 
 // App keeps page state and API actions; tab screens live in src/features.
 function App() {
+  const initialDateRange = useMemo(() => createDateRange(7), []);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [status, setStatus] = useState("Connecting to backend...");
   const [cameras, setCameras] = useState(DEFAULT_CAMERAS);
@@ -40,7 +42,8 @@ function App() {
   const [diagnostic, setDiagnostic] = useState(null);
   const [sundayMilitary, setSundayMilitary] = useState(null);
   const [reportRows, setReportRows] = useState([]);
-  const [reportFilters, setReportFilters] = useState({ vehicle_type: "all", camera_id: "", start_date: "", end_date: "" });
+  const [dateRange, setDateRange] = useState(initialDateRange);
+  const [reportFilters, setReportFilters] = useState({ vehicle_type: "all", camera_id: "", ...initialDateRange });
   const [tcpName, setTcpName] = useState("kiari");
   const [tcpReport, setTcpReport] = useState(null);
   const [tcpDashboard, setTcpDashboard] = useState(null);
@@ -66,7 +69,11 @@ function App() {
       if (activeTab === "upload" && uploadRunning) loadUploadLogs();
     }, 5000);
     return () => clearInterval(timer);
-  }, [activeTab, selectedCamera, uploadRunning, cameras]);
+  }, [activeTab, selectedCamera, uploadRunning, cameras, dateRange]);
+
+  function dateParams(range = dateRange) {
+    return new URLSearchParams(range).toString();
+  }
 
   async function refreshHealth() {
     try {
@@ -130,12 +137,18 @@ function App() {
     }
   }
 
-  async function refreshCounters() {
+  async function refreshCounters(range = dateRange) {
     const next = {};
     await Promise.all(
       cameras.slice(0, 14).map(async (camera) => {
         try {
-          next[camera.id] = await getJson(`/api/camera_today_stats/${camera.id}`);
+          const stats = await getJson(`/api/camera_dashboard/${camera.id}?${dateParams(range)}`);
+          next[camera.id] = {
+            ...stats,
+            today_total: Number(stats.total_mil || 0) + Number(stats.total_civil || 0),
+            today_mil: Number(stats.total_mil || 0),
+            today_civil: Number(stats.total_civil || 0),
+          };
         } catch {
           next[camera.id] = { today_total: 0, today_mil: 0, today_civil: 0 };
         }
@@ -144,13 +157,14 @@ function App() {
     setCameraStats(next);
   }
 
-  async function loadDashboard(showStatus = true) {
+  async function loadDashboard(showStatus = true, range = dateRange) {
     try {
+      const params = dateParams(range);
       const [full, cmp, diag, sunday] = await Promise.all([
-        getJson("/dashboard_full"),
-        getJson("/api/camera_comparison"),
-        getJson("/api/count_diagnostic"),
-        getJson("/api/sunday_military_report?limit=500"),
+        getJson(`/dashboard_full?${params}`),
+        getJson(`/api/camera_comparison?${params}`),
+        getJson(`/api/count_diagnostic?date=${encodeURIComponent(range.end_date)}`),
+        getJson(`/api/sunday_military_report?limit=500&date=${encodeURIComponent(range.end_date)}`),
       ]);
       setDashboard(full);
       setComparison(cmp);
@@ -236,11 +250,12 @@ function App() {
     setUploadLogs(data.logs || []);
   }
 
-  async function loadCameraLogs(cameraId = selectedCamera) {
+  async function loadCameraLogs(cameraId = selectedCamera, range = dateRange) {
     setSelectedCamera(cameraId);
+    const params = dateParams(range);
     const [data, dashboardData] = await Promise.all([
-      getJson(`/api/camera_logs/${cameraId}?limit=300`),
-      getJson(`/api/camera_dashboard/${cameraId}`),
+      getJson(`/api/camera_logs/${cameraId}?limit=300&${params}`),
+      getJson(`/api/camera_dashboard/${cameraId}?${params}`),
     ]);
     setCameraLogs(data.logs || []);
     setCameraLogDashboard(dashboardData);
@@ -296,10 +311,10 @@ function App() {
     setSearchResults(Array.isArray(data) ? data : data.rows || []);
   }
 
-  async function loadReport(event) {
+  async function loadReport(event, filtersOverride = reportFilters) {
     event?.preventDefault();
     const params = new URLSearchParams();
-    Object.entries(reportFilters).forEach(([key, value]) => {
+    Object.entries(filtersOverride).forEach(([key, value]) => {
       if (value) params.set(key, value);
     });
     params.set("limit", "2000");
@@ -316,16 +331,27 @@ function App() {
     window.open(`/download_last_7_days_report?${params}`, "_blank");
   }
 
-  async function loadTcpReport(name = tcpName) {
+  async function loadTcpReport(name = tcpName, range = dateRange) {
     setTcpName(name);
+    const params = dateParams(range);
     const [data, dashboardData] = await Promise.all([
-      getJson(`/api/tcp_table/${name}?limit=1000`),
-      getJson(`/api/tcp_dashboard/${name}`),
+      getJson(`/api/tcp_table/${name}?limit=1000&${params}`),
+      getJson(`/api/tcp_dashboard/${name}?${params}`),
     ]);
     setTcpReport(data);
     setTcpDashboard(dashboardData);
-    const rem = await getJson(`/api/remaining_vehicles?group=${name}`);
+    const rem = await getJson(`/api/remaining_vehicles?group=${name}&${params}`);
     setRemaining(rem);
+  }
+
+  function applyDateRange(range) {
+    setDateRange(range);
+    setReportFilters((current) => ({ ...current, ...range }));
+    refreshCounters(range);
+    if (activeTab === "dashboard") loadDashboard(true, range);
+    if (activeTab === "logs") loadCameraLogs(selectedCamera, range);
+    if (activeTab === "tcp") loadTcpReport(tcpName, range);
+    if (activeTab === "reports") loadReport(null, { ...reportFilters, ...range });
   }
 
   async function loadVehicleMaster() {
@@ -419,14 +445,17 @@ function App() {
                 <p className="eyebrow">Operations Console</p>
                 <h1>{activeLabel}</h1>
               </div>
-              <div className="status-pill">{status}</div>
+              <div className="topbar-actions">
+                <DateRangeSelector value={dateRange} onApply={applyDateRange} />
+                <div className="status-pill">{status}</div>
+              </div>
             </header>
           </>
         )}
 
         {activeTab !== "dashboard" && activeTab !== "tcp" && (
           <section className="metric-row">
-            <Metric label="Today Total" value={totals.total} />
+            <Metric label="Range Total" value={totals.total} />
             <Metric label="Military" value={totals.mil} />
             <Metric label="Civil" value={totals.civil} />
           </section>
@@ -440,6 +469,8 @@ function App() {
             sundayMilitary={sundayMilitary}
             cameras={cameras}
             cameraStats={cameraStats}
+            dateRange={dateRange}
+            applyDateRange={applyDateRange}
             status={status}
             refresh={() => loadDashboard(true)}
             openCameraLogs={(cameraId) => {
@@ -494,6 +525,7 @@ function App() {
             loadCameraLogs={loadCameraLogs}
             rows={cameraLogs}
             cameraDashboard={cameraLogDashboard}
+            dateRange={dateRange}
             deleteLog={deleteLog}
             running={running}
             startCamera={startCamera}
@@ -519,6 +551,7 @@ function App() {
             tcpReport={tcpReport}
             tcpDashboard={tcpDashboard}
             remaining={remaining}
+            dateRange={dateRange}
             loadTcpReport={loadTcpReport}
           />
         )}

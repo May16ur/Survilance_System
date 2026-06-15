@@ -57,6 +57,58 @@ export function DonutChart({ title, military = 0, civil = 0 }) {
   );
 }
 
+export function SpeedPieChart({ title, overspeed = 0, withinLimit = 0, accent = "#ef4444" }) {
+  const overspeedValue = Number(overspeed || 0);
+  const withinLimitValue = Number(withinLimit || 0);
+  const total = overspeedValue + withinLimitValue;
+  const overspeedShare = total ? (overspeedValue / total) * 100 : 0;
+  const withinColor = "#22c55e";
+
+  return (
+    <article className="chart-card">
+      <div className="chart-card-head">
+        <div>
+          <h2>{title}</h2>
+          <span>Speed limit: 40 km/h</span>
+        </div>
+        <div className="chart-legend">
+          <span><i style={{ background: accent }} /> Over 40 km/h</span>
+          <span><i style={{ background: withinColor }} /> Within limit</span>
+        </div>
+      </div>
+      <div className="donut-layout">
+        <div
+          className="donut-chart"
+          style={{
+            background: total
+              ? `conic-gradient(${accent} 0 ${overspeedShare}%, ${withinColor} ${overspeedShare}% 100%)`
+              : `conic-gradient(${GRID_COLOR} 0 100%)`,
+          }}
+          role="img"
+          aria-label={`${title}: ${overspeedValue} over speed and ${withinLimitValue} within speed limit`}
+        >
+          <div className="donut-hole">
+            <strong>{formatNumber(total)}</strong>
+            <span>Vehicles</span>
+          </div>
+        </div>
+        <div className="donut-values">
+          <div>
+            <i style={{ background: accent }} />
+            <span>Over 40 km/h</span>
+            <strong>{formatNumber(overspeedValue)}</strong>
+          </div>
+          <div>
+            <i style={{ background: withinColor }} />
+            <span>40 km/h or below</span>
+            <strong>{formatNumber(withinLimitValue)}</strong>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export function BarChart({ title, labels = [], values = [], color, seriesLabel }) {
   const points = labels.map((label, index) => ({
     label,

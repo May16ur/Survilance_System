@@ -1,16 +1,19 @@
 import { Activity, CalendarDays, CarFront, RefreshCw, Shield } from "lucide-react";
 import { SimpleTable, TcpTable } from "../components/Tables.jsx";
 import { BarChart, CHART_COLORS } from "../components/Charts.jsx";
+import { dateRangeDays, formatDateRange } from "../components/DateRangeSelector.jsx";
 
-export function TcpPanel({ tcpName, tcpOptions, tcpReport, tcpDashboard, remaining, loadTcpReport }) {
-  const todayMil = Number(tcpDashboard?.today_mil || 0);
-  const todayCivil = Number(tcpDashboard?.today_civil || 0);
+export function TcpPanel({ tcpName, tcpOptions, tcpReport, tcpDashboard, remaining, dateRange, loadTcpReport }) {
+  const selectedMil = Number(tcpDashboard?.total_mil || 0);
+  const selectedCivil = Number(tcpDashboard?.total_civil || 0);
+  const periodLabel = formatDateRange(dateRange);
+  const days = dateRangeDays(dateRange);
   const tcpLabel = tcpOptions.find((item) => item.key === tcpName)?.label || tcpName.toUpperCase();
   const kpis = [
-    { label: "Today's Vehicles", value: todayMil + todayCivil, icon: Activity, tone: "cyan" },
-    { label: "Military Vehicles", value: todayMil, icon: Shield, tone: "emerald" },
-    { label: "Civil Vehicles", value: todayCivil, icon: CarFront, tone: "amber" },
-    { label: "Last 7 Days", value: tcpDashboard?.week_total || 0, icon: CalendarDays, tone: "violet" },
+    { label: "Selected Vehicles", value: selectedMil + selectedCivil, icon: Activity, tone: "cyan" },
+    { label: "Military Vehicles", value: selectedMil, icon: Shield, tone: "emerald" },
+    { label: "Civil Vehicles", value: selectedCivil, icon: CarFront, tone: "amber" },
+    { label: "Daily Average", value: Math.round((selectedMil + selectedCivil) / Math.max(days, 1)), icon: CalendarDays, tone: "violet" },
   ];
 
   return (
@@ -35,14 +38,14 @@ export function TcpPanel({ tcpName, tcpOptions, tcpReport, tcpDashboard, remaini
       </div>
       <div className="dashboard-chart-grid tcp-dashboard-charts">
         <BarChart
-          title="Military Vehicles (Last 7 Days)"
+          title={`Military Vehicles (${periodLabel})`}
           labels={tcpDashboard?.dates || []}
           values={tcpDashboard?.mil || []}
           color={CHART_COLORS.military}
           seriesLabel="Military Vehicles"
         />
         <BarChart
-          title="Civil Vehicles (Last 7 Days)"
+          title={`Civil Vehicles (${periodLabel})`}
           labels={tcpDashboard?.dates || []}
           values={tcpDashboard?.civil || []}
           color={CHART_COLORS.civil}

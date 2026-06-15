@@ -1,6 +1,7 @@
 import { Activity, CalendarDays, CarFront, RefreshCw, Search, Shield, TrendingDown, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
-import { BarChart, CHART_COLORS } from "../components/Charts.jsx";
+import { BarChart, CHART_COLORS, SpeedPieChart } from "../components/Charts.jsx";
+import { DateRangeSelector, dateRangeDays, formatDateRange } from "../components/DateRangeSelector.jsx";
 
 const DEFAULT_TCP_REPORTS = [
   { key: "igoo", label: "IGOO TCP" },
@@ -141,29 +142,31 @@ function SundayMilitaryReport({ report }) {
   );
 }
 
-export function DashboardPanel({ dashboard, comparison, diagnostic, sundayMilitary, cameras, cameraStats, status, refresh, openCameraLogs }) {
+export function DashboardPanel({ dashboard, comparison, diagnostic, sundayMilitary, cameras, cameraStats, dateRange, applyDateRange, status, refresh, openCameraLogs }) {
   const [cameraSearch, setCameraSearch] = useState("");
   const comparisonPairs = comparison?.pairs || {};
   const pairs = DEFAULT_TCP_REPORTS.map((fallback) => {
     const live = comparisonPairs[fallback.key] || {};
     return { ...fallback, ...live, label: fallback.label };
   });
-  const todayMil = Number(dashboard?.today_mil ?? 0);
-  const todayCivil = Number(dashboard?.today_civil ?? 0);
-  const todayTotal = todayMil + todayCivil;
-  const weeklyTotal = Number(dashboard?.week_mil || 0) + Number(dashboard?.week_civil || 0);
+  const selectedMil = Number(dashboard?.total_mil ?? 0);
+  const selectedCivil = Number(dashboard?.total_civil ?? 0);
+  const selectedTotal = selectedMil + selectedCivil;
   const dailyTotals = dashboard?.total || [];
-  const yesterdayTotal = Number(dailyTotals[dailyTotals.length - 2] || 0);
-  const dailyChange = yesterdayTotal ? ((todayTotal - yesterdayTotal) / yesterdayTotal) * 100 : 0;
+  const previousDayTotal = Number(dailyTotals[dailyTotals.length - 2] || 0);
+  const finalDayTotal = Number(dailyTotals[dailyTotals.length - 1] || 0);
+  const dailyChange = previousDayTotal ? ((finalDayTotal - previousDayTotal) / previousDayTotal) * 100 : 0;
+  const periodDays = dateRangeDays(dateRange);
+  const periodLabel = formatDateRange(dateRange);
   const filteredCameras = useMemo(() => {
     const query = cameraSearch.trim().toLowerCase();
     return query ? cameras.filter((camera) => camera.name.toLowerCase().includes(query)) : cameras;
   }, [cameraSearch, cameras]);
   const summaryCards = [
-    { label: "Today's Vehicles", value: todayTotal, detail: `${dailyChange >= 0 ? "+" : ""}${dailyChange.toFixed(1)}% vs yesterday`, trend: dailyChange, icon: Activity, tone: "cyan" },
-    { label: "Military Vehicles", value: todayMil, detail: `${todayTotal ? Math.round((todayMil / todayTotal) * 100) : 0}% of today's traffic`, trend: 0, icon: Shield, tone: "emerald" },
-    { label: "Civil Vehicles", value: todayCivil, detail: `${todayTotal ? Math.round((todayCivil / todayTotal) * 100) : 0}% of today's traffic`, trend: 0, icon: CarFront, tone: "amber" },
-    { label: "Last 7 Days", value: weeklyTotal, detail: `${Math.round(weeklyTotal / 7)} daily average`, trend: 0, icon: CalendarDays, tone: "violet" },
+    { label: "Selected Vehicles", value: selectedTotal, detail: periodLabel, trend: 0, icon: Activity, tone: "cyan" },
+    { label: "Military Vehicles", value: selectedMil, detail: `${selectedTotal ? Math.round((selectedMil / selectedTotal) * 100) : 0}% of selected traffic`, trend: 0, icon: Shield, tone: "emerald" },
+    { label: "Civil Vehicles", value: selectedCivil, detail: `${selectedTotal ? Math.round((selectedCivil / selectedTotal) * 100) : 0}% of selected traffic`, trend: 0, icon: CarFront, tone: "amber" },
+    { label: "Daily Average", value: Math.round(selectedTotal / Math.max(periodDays, 1)), detail: `${periodDays} day${periodDays === 1 ? "" : "s"} selected`, trend: dailyChange, icon: CalendarDays, tone: "violet" },
   ];
   const backendOnline = /online|refreshed/i.test(status || "");
 
@@ -176,6 +179,7 @@ export function DashboardPanel({ dashboard, comparison, diagnostic, sundayMilita
           <p>Real-time ANPR, traffic movement and TCP monitoring</p>
         </div>
         <div className="dashboard-command-actions">
+          <DateRangeSelector value={dateRange} onApply={applyDateRange} dark />
           <label className="dashboard-search">
             <Search size={16} />
             <input
@@ -238,23 +242,38 @@ export function DashboardPanel({ dashboard, comparison, diagnostic, sundayMilita
       <TcpReportGroup title="TCP Reports (Civil Vehicles)" pairs={pairs} type="civil" />
 
       <p className="tcp-report-note dashboard-total-note">
-        Dashboard total is the sum of all seven TCP trips. Diagnostic total: {diagnostic?.dashboard_total ?? diagnostic?.today_total ?? 0}.
+        Dashboard total is the sum of all seven TCP trips. End-date diagnostic: {diagnostic?.dashboard_total ?? diagnostic?.today_total ?? 0}.
       </p>
 
       <div className="dashboard-chart-grid">
         <BarChart
-          title="Military Vehicles (Last 7 Days)"
+          title={`Military Vehicles (${periodLabel})`}
           labels={dashboard?.dates || []}
           values={dashboard?.mil || []}
           color={CHART_COLORS.military}
           seriesLabel="Military Vehicles"
         />
         <BarChart
-          title="Civil Vehicles (Last 7 Days)"
+          title={`Civil Vehicles (${periodLabel})`}
           labels={dashboard?.dates || []}
           values={dashboard?.civil || []}
           color={CHART_COLORS.civil}
           seriesLabel="Civil Vehicles"
+        />
+      </div>
+
+      <div className="dashboard-chart-grid">
+        <SpeedPieChart
+          title={`Military Speed Status (${periodLabel})`}
+          overspeed={dashboard?.mil_overspeed}
+          withinLimit={dashboard?.mil_within_limit}
+          accent="#f97316"
+        />
+        <SpeedPieChart
+          title={`Civil Speed Status (${periodLabel})`}
+          overspeed={dashboard?.civil_overspeed}
+          withinLimit={dashboard?.civil_within_limit}
+          accent="#ef4444"
         />
       </div>
 

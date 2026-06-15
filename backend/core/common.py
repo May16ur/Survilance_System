@@ -1606,7 +1606,8 @@ def get_last_7_days_report_rows(camera_name=None, vehicle_type="all", start_date
 
 def get_sunday_military_report(limit=500, date_value=None):
     if date_value:
-        report_date = datetime.datetime.strptime(date_value, "%Y-%m-%d").date()
+        selected_date = datetime.datetime.strptime(date_value, "%Y-%m-%d").date()
+        report_date = selected_date - datetime.timedelta(days=(selected_date.weekday() + 1) % 7)
     else:
         today = datetime.date.today()
         report_date = today - datetime.timedelta(days=(today.weekday() + 1) % 7)
@@ -1644,11 +1645,21 @@ def get_dashboard_stats(camera_name=None, days=7, start_date=None, end_date=None
             SELECT {date_expr} as detection_date,
               SUM(CASE WHEN class_id=0 OR LOWER(COALESCE(class_name,'')) LIKE '%mil%' THEN 1 ELSE 0 END) mil_count,
               SUM(CASE WHEN class_id=1 OR LOWER(COALESCE(class_name,'')) LIKE '%civil%' THEN 1 ELSE 0 END) civil_count,
+              SUM(CASE WHEN (class_id=0 OR LOWER(COALESCE(class_name,'')) LIKE '%mil%')
+                AND GREATEST(
+                  CAST(COALESCE(NULLIF(avg_speed,''),'0') AS DECIMAL(10,2)),
+                  CAST(COALESCE(NULLIF(speed,''),'0') AS DECIMAL(10,2))
+                ) > 40 THEN 1 ELSE 0 END) mil_overspeed_count,
+              SUM(CASE WHEN (class_id=1 OR LOWER(COALESCE(class_name,'')) LIKE '%civil%')
+                AND GREATEST(
+                  CAST(COALESCE(NULLIF(avg_speed,''),'0') AS DECIMAL(10,2)),
+                  CAST(COALESCE(NULLIF(speed,''),'0') AS DECIMAL(10,2))
+                ) > 40 THEN 1 ELSE 0 END) civil_overspeed_count,
               COUNT(*) total_count
             FROM vehicle_logs {where_sql} GROUP BY {date_expr} ORDER BY {date_expr}
         """, tuple(params))
         trend={_fmt_date(r['detection_date']): r for r in cur.fetchall()}
-        dates=[]; mil=[]; civil=[]; total=[]
+        dates=[]; mil=[]; civil=[]; total=[]; mil_overspeed=[]; civil_overspeed=[]
         d=start
         while d<=end:
             key=d.strftime("%Y-%m-%d"); label=d.strftime("%d-%m"); r=trend.get(key,{})
@@ -1658,6 +1669,8 @@ def get_dashboard_stats(camera_name=None, days=7, start_date=None, end_date=None
             mil.append(mil_value)
             civil.append(civil_value)
             total.append(mil_value + civil_value)
+            mil_overspeed.append(int(r.get('mil_overspeed_count') or 0))
+            civil_overspeed.append(int(r.get('civil_overspeed_count') or 0))
             d+=datetime.timedelta(days=1)
 
         week_start = max(start, end - datetime.timedelta(days=6))
@@ -1679,7 +1692,7 @@ def get_dashboard_stats(camera_name=None, days=7, start_date=None, end_date=None
         cur.close(); conn.close()
         today_mil = int(tr.get('m') or 0)
         today_civil = int(tr.get('cv') or 0)
-        return {"dates":dates,"mil":mil,"civil":civil,"total":total,"today_total":today_mil+today_civil,"today_mil":today_mil,"today_civil":today_civil,"week_total":sum(mil)+sum(civil),"week_mil":sum(mil),"week_civil":sum(civil),"total_mil":sum(mil),"total_civil":sum(civil),"week_pie":[week_mil,week_civil],"month_pie":[month_mil,month_civil],"year_pie":[year_mil,year_civil],"logs":logs,"report_rows":[],"report_total":0,"report_range":{"from":start.strftime('%Y-%m-%d'),"to":end.strftime('%Y-%m-%d')}}
+        return {"dates":dates,"mil":mil,"civil":civil,"total":total,"today_total":today_mil+today_civil,"today_mil":today_mil,"today_civil":today_civil,"week_total":sum(mil)+sum(civil),"week_mil":sum(mil),"week_civil":sum(civil),"total_mil":sum(mil),"total_civil":sum(civil),"mil_overspeed":sum(mil_overspeed),"mil_within_limit":max(sum(mil)-sum(mil_overspeed),0),"civil_overspeed":sum(civil_overspeed),"civil_within_limit":max(sum(civil)-sum(civil_overspeed),0),"week_pie":[week_mil,week_civil],"month_pie":[month_mil,month_civil],"year_pie":[year_mil,year_civil],"logs":logs,"report_rows":[],"report_total":0,"report_range":{"from":start.strftime('%Y-%m-%d'),"to":end.strftime('%Y-%m-%d')}}
     except Exception as e:
         print("Dashboard stats error:", e); return {"dates":[],"mil":[],"civil":[],"total":[],"today_total":0,"today_mil":0,"today_civil":0,"week_total":0,"week_mil":0,"week_civil":0,"logs":[],"report_rows":[]}
 
@@ -2087,25 +2100,26 @@ def build_tcp_report_rows(tcp_name="all", limit=300, start_date=None, end_date=N
 
 
 
-def get_camera_comparison_stats():
+def get_camera_comparison_stats(start_date=None, end_date=None):
     """
     Dashboard TCP cards.
-    veh_in = total detections from both cameras of that TCP today.
-    matched = number of licenses found in both cameras with valid IN/OUT today.
+    veh_in = total detections from both cameras of that TCP in the selected range.
+    matched = number of licenses found in both cameras with valid IN/OUT in that range.
     remaining = unmatched detections after matched pairs consume two detections.
     """
-    today = datetime.date.today().strftime("%Y-%m-%d")
+    end_date = end_date or datetime.date.today().strftime("%Y-%m-%d")
+    start_date = start_date or end_date
     pairs = {}
     counts = {}
 
     for key, (cam_a, cam_b) in TCP_PAIR_MAP.items():
         try:
-            stats_a = _count_class_totals_for_camera_name(cam_a, today, today)
-            stats_b = _count_class_totals_for_camera_name(cam_b, today, today)
+            stats_a = _count_class_totals_for_camera_name(cam_a, start_date, end_date)
+            stats_b = _count_class_totals_for_camera_name(cam_b, start_date, end_date)
             total_a = int(stats_a.get("mil", 0)) + int(stats_a.get("civil", 0))
             total_b = int(stats_b.get("mil", 0)) + int(stats_b.get("civil", 0))
             pair_total = total_a + total_b
-            rep = build_tcp_report_rows(key, limit=5000, start_date=today, end_date=today)
+            rep = build_tcp_report_rows(key, limit=5000, start_date=start_date, end_date=end_date)
             matched = int(rep.get("matched_count") or 0)
             waiting = int(rep.get("waiting_count") or 0)
             remaining = max(pair_total - (matched * 2), 0)
@@ -2183,7 +2197,8 @@ def get_camera_comparison_stats():
 
     out = {
         "success": True,
-        "today": today,
+        "start_date": start_date,
+        "end_date": end_date,
         "pairs": pairs,
         "counts": counts,
         "today_total": sum(p["veh_in"] for p in pairs.values()),
@@ -2263,8 +2278,8 @@ def _count_class_totals_for_camera_name(camera_name, start_date, end_date):
         print("_count_class_totals_for_camera_name error:", e)
         return {"total": 0, "mil": 0, "civil": 0}
 
-def get_remaining_vehicle_rows(group="kiari", limit=200):
-    rep=build_tcp_report_rows(group, limit=2000); rows=[r for r in rep.get('rows',[]) if not r.get('time_out')]
+def get_remaining_vehicle_rows(group="kiari", limit=200, start_date=None, end_date=None):
+    rep=build_tcp_report_rows(group, limit=2000, start_date=start_date, end_date=end_date); rows=[r for r in rep.get('rows',[]) if not r.get('time_out')]
     return {"success":True,"group":group,"in_camera":rep.get('in_camera',''),"out_camera":rep.get('out_camera',''),"total":len(rows),"rows":rows[:int(limit)]}
 
 def get_camera_today_db_stats(camera_id=None, camera_name=None, date_value=None):

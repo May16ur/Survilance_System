@@ -14,8 +14,6 @@ export function ReportsPanel({ cameras, filters, setFilters, rows, loadReport, d
           <option value="">All Cameras</option>
           {cameras.map((camera) => <option key={camera.id} value={camera.id}>{camera.id}. {camera.name}</option>)}
         </select>
-        <input type="date" value={filters.start_date} onChange={(e) => setFilters({ ...filters, start_date: e.target.value })} />
-        <input type="date" value={filters.end_date} onChange={(e) => setFilters({ ...filters, end_date: e.target.value })} />
         <button><RefreshCw size={17} /> Load</button>
         <button type="button" onClick={downloadReport}><Download size={17} /> PDF</button>
       </form>
