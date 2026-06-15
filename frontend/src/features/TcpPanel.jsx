@@ -8,6 +8,16 @@ export function TcpPanel({ tcpName, tcpOptions, tcpReport, tcpDashboard, remaini
   const selectedCivil = Number(tcpDashboard?.total_civil || 0);
   const periodLabel = formatDateRange(dateRange);
   const days = dateRangeDays(dateRange);
+  const cameraBreakdown = tcpDashboard?.camera_breakdown || [];
+  const combinedSpeed = cameraBreakdown.reduce(
+    (totals, camera) => ({
+      milOverspeed: totals.milOverspeed + Number(camera.mil_overspeed || 0),
+      milWithinLimit: totals.milWithinLimit + Number(camera.mil_within_limit || 0),
+      civilOverspeed: totals.civilOverspeed + Number(camera.civil_overspeed || 0),
+      civilWithinLimit: totals.civilWithinLimit + Number(camera.civil_within_limit || 0),
+    }),
+    { milOverspeed: 0, milWithinLimit: 0, civilOverspeed: 0, civilWithinLimit: 0 }
+  );
   const tcpLabel = tcpOptions.find((item) => item.key === tcpName)?.label || tcpName.toUpperCase();
   const kpis = [
     { label: "Selected Vehicles", value: selectedMil + selectedCivil, icon: Activity, tone: "cyan" },
@@ -52,28 +62,20 @@ export function TcpPanel({ tcpName, tcpOptions, tcpReport, tcpDashboard, remaini
           seriesLabel="Civil Vehicles"
         />
       </div>
-      {(tcpDashboard?.camera_breakdown || []).map((camera) => (
-        <div className="tcp-camera-speed-section" key={camera.camera_name}>
-          <div className="tcp-camera-speed-heading">
-            <span>Individual Camera Speed Status</span>
-            <h2>{camera.camera_name}</h2>
-          </div>
-          <div className="dashboard-chart-grid tcp-camera-pie-charts">
-            <SpeedPieChart
-              title={`Military Speed Status (${periodLabel})`}
-              overspeed={camera.mil_overspeed}
-              withinLimit={camera.mil_within_limit}
-              accent="#f97316"
-            />
-            <SpeedPieChart
-              title={`Civil Speed Status (${periodLabel})`}
-              overspeed={camera.civil_overspeed}
-              withinLimit={camera.civil_within_limit}
-              accent="#ef4444"
-            />
-          </div>
-        </div>
-      ))}
+      <div className="dashboard-chart-grid tcp-camera-pie-charts">
+        <SpeedPieChart
+          title={`${tcpLabel} Military Speed Status (${periodLabel})`}
+          overspeed={combinedSpeed.milOverspeed}
+          withinLimit={combinedSpeed.milWithinLimit}
+          accent="#f97316"
+        />
+        <SpeedPieChart
+          title={`${tcpLabel} Civil Speed Status (${periodLabel})`}
+          overspeed={combinedSpeed.civilOverspeed}
+          withinLimit={combinedSpeed.civilWithinLimit}
+          accent="#ef4444"
+        />
+      </div>
       <TcpTable rows={tcpReport?.rows || []} />
       <SimpleTable
         title="Remaining Vehicles"
