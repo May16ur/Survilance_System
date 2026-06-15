@@ -12,8 +12,6 @@ from core.common import (
     get_camera_sum_vs_dashboard,
     get_sunday_military_report,
     TCP_PAIR_MAP,
-    build_tcp_report_rows,
-    class_bucket,
 )
 from flask_app.blueprints.route_utils import cache_get, cache_set
 
@@ -137,12 +135,14 @@ def api_tcp_dashboard(tcp_name):
         start, end = end, start
     camera_names = TCP_PAIR_MAP[key]
     camera_breakdown = []
+    camera_stats_rows = []
     for camera_name in camera_names:
         camera_stats = get_dashboard_stats(
             camera_name=camera_name,
             start_date=start.strftime("%Y-%m-%d"),
             end_date=end.strftime("%Y-%m-%d"),
         )
+        camera_stats_rows.append(camera_stats)
         camera_breakdown.append({
             "camera_name": camera_name,
             "mil": int(camera_stats.get("total_mil") or 0),
@@ -152,33 +152,46 @@ def api_tcp_dashboard(tcp_name):
             "civil_overspeed": int(camera_stats.get("civil_overspeed") or 0),
             "civil_within_limit": int(camera_stats.get("civil_within_limit") or 0),
         })
-    dates = []
-    current = start
-    while current <= end:
-        dates.append(current)
-        current += datetime.timedelta(days=1)
-    mil = []
-    civil = []
-    for report_date in dates:
-        date_key = report_date.strftime("%Y-%m-%d")
-        report = build_tcp_report_rows(key, limit=5000, start_date=date_key, end_date=date_key)
-        rows = report.get("rows") or []
-        mil.append(sum(1 for row in rows if class_bucket(row.get("class_name"), row.get("class_id")) == "mil"))
-        civil.append(sum(1 for row in rows if class_bucket(row.get("class_name"), row.get("class_id")) == "civil"))
+    dates = camera_stats_rows[0].get("dates", []) if camera_stats_rows else []
+    def series_value(stats, field, index):
+        values = stats.get(field) or []
+        return int(values[index] or 0) if index < len(values) else 0
+
+    mil = [
+        sum(series_value(stats, "mil", index) for stats in camera_stats_rows)
+        for index in range(len(dates))
+    ]
+    civil = [
+        sum(series_value(stats, "civil", index) for stats in camera_stats_rows)
+        for index in range(len(dates))
+    ]
+    total_mil = sum(mil)
+    total_civil = sum(civil)
+    mil_overspeed = sum(int(stats.get("mil_overspeed") or 0) for stats in camera_stats_rows)
+    civil_overspeed = sum(int(stats.get("civil_overspeed") or 0) for stats in camera_stats_rows)
 
     return jsonify({
         "success": True,
         "tcp_name": key,
-        "dates": [report_date.strftime("%d-%m") for report_date in dates],
+        "dates": dates,
         "mil": mil,
         "civil": civil,
         "start_date": start.strftime("%Y-%m-%d"),
         "end_date": end.strftime("%Y-%m-%d"),
         "today_mil": mil[-1] if mil else 0,
         "today_civil": civil[-1] if civil else 0,
-        "total_mil": sum(mil),
-        "total_civil": sum(civil),
-        "week_total": sum(mil) + sum(civil),
+        "total_mil": total_mil,
+        "total_civil": total_civil,
+        "mil_overspeed": mil_overspeed,
+        "mil_within_limit": max(total_mil - mil_overspeed, 0),
+        "civil_overspeed": civil_overspeed,
+        "civil_within_limit": max(total_civil - civil_overspeed, 0),
+        "week_total": total_mil + total_civil,
+        "counts_consistent": (
+            mil_overspeed + max(total_mil - mil_overspeed, 0) == total_mil
+            and civil_overspeed + max(total_civil - civil_overspeed, 0) == total_civil
+            and sum(mil) + sum(civil) == total_mil + total_civil
+        ),
         "camera_breakdown": camera_breakdown,
     })
 

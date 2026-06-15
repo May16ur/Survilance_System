@@ -8,16 +8,12 @@ export function TcpPanel({ tcpName, tcpOptions, tcpReport, tcpDashboard, remaini
   const selectedCivil = Number(tcpDashboard?.total_civil || 0);
   const periodLabel = formatDateRange(dateRange);
   const days = dateRangeDays(dateRange);
-  const cameraBreakdown = tcpDashboard?.camera_breakdown || [];
-  const combinedSpeed = cameraBreakdown.reduce(
-    (totals, camera) => ({
-      milOverspeed: totals.milOverspeed + Number(camera.mil_overspeed || 0),
-      milWithinLimit: totals.milWithinLimit + Number(camera.mil_within_limit || 0),
-      civilOverspeed: totals.civilOverspeed + Number(camera.civil_overspeed || 0),
-      civilWithinLimit: totals.civilWithinLimit + Number(camera.civil_within_limit || 0),
-    }),
-    { milOverspeed: 0, milWithinLimit: 0, civilOverspeed: 0, civilWithinLimit: 0 }
-  );
+  const combinedSpeed = {
+    milOverspeed: Number(tcpDashboard?.mil_overspeed || 0),
+    milWithinLimit: Number(tcpDashboard?.mil_within_limit || 0),
+    civilOverspeed: Number(tcpDashboard?.civil_overspeed || 0),
+    civilWithinLimit: Number(tcpDashboard?.civil_within_limit || 0),
+  };
   const tcpLabel = tcpOptions.find((item) => item.key === tcpName)?.label || tcpName.toUpperCase();
   const kpis = [
     { label: "Selected Vehicles", value: selectedMil + selectedCivil, icon: Activity, tone: "cyan" },
